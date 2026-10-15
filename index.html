@@ -373,6 +373,36 @@
 
     .window-body { padding: 8px 6px 6px; }
 
+    /* How to Play: a Notepad-style text panel */
+    .readme {
+      max-height: min(380px, 55vh);
+      overflow-y: auto;
+      padding: 6px 8px;
+      background: #fff;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .readme p { margin: 0 0 8px; }
+    .readme ul { margin: 0 0 8px; padding-left: 18px; }
+
+    .help-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+
+    #help-ok {
+      min-width: 75px;
+      height: 24px;
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
     .stats { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
     .stats td { padding: 2px 0; }
     .stats td:last-child { text-align: right; font-weight: bold; }
@@ -445,6 +475,35 @@
     </div>
   </div>
 
+  <div id="help" class="window raised" hidden>
+    <div class="title-bar">
+      <span>Readme.txt</span>
+      <button id="help-close" class="raised" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="window-body">
+      <div class="readme sunken">
+        <p><b>Welcome to Print95.</b> Run a print shop, from one desktop printer up to presses,
+          binders and trucks. Keep your income above rent and upkeep, or you go bankrupt.</p>
+        <p><b>Start by hand:</b> take a Blank Sheet from the Paper Supply, load the Printer,
+          staple the print into a Zine, and drop it in the Outbox for $10.</p>
+        <p><b>Controls</b></p>
+        <ul>
+          <li>Tap a machine's IN or OUT tray, or its middle, to use it.</li>
+          <li>Drag machines and belts to move them. Drag open floor to look around.</li>
+          <li>Pinch or scroll to zoom. Press F to see the whole floor.</li>
+          <li>Start menu: belts, splitters, bridges, the Shop and the Ledger.</li>
+          <li>Right-click goes back to Select.</li>
+        </ul>
+        <p><b>Grow:</b> automate with belts, buy licenses for roll paper and production
+          equipment, then run rolls through presses, sheeters and binders to pallets and trucks.</p>
+      </div>
+      <div class="help-footer">
+        <label><input id="help-hide" type="checkbox"> Don't show this again</label>
+        <button id="help-ok" class="raised" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ledger" class="window raised" hidden>
     <div class="title-bar">
       <span>Ledger.exe</span>
@@ -476,6 +535,7 @@
         <li class="sep" role="separator"></li>
         <li><button type="button" data-open="shop"><span class="check"></span>Shop...</button></li>
         <li><button type="button" data-open="ledger"><span class="check"></span>Ledger...</button></li>
+        <li><button type="button" data-open="help"><span class="check"></span>How to Play...</button></li>
         <li class="sep" role="separator"></li>
         <li><button type="button" data-action="fit"><span class="check"></span>View Whole Floor<span class="key">F</span></button></li>
       </ul>

@@ -1,5 +1,7 @@
 // The taskbar, Start menu and windows are plain DOM. Everything else is drawn on the canvas.
 
+const HELP_HIDDEN_KEY = "print95.hideHelp";
+
 const TOOL_NAMES = {
   select: "Select",
   belt: "Belt",
@@ -32,6 +34,7 @@ function setText(el, text) {
 const UI = {
   init({ onTool, onBuy, onFit }) {
     this.shopEl = document.getElementById("shop");
+    this.helpEl = document.getElementById("help");
     this.buyButtons = this.buildShop(onBuy);
     document.getElementById("shop-close").addEventListener("click", () => this.toggleWindow(this.shopEl));
 
@@ -60,8 +63,35 @@ const UI = {
     document.getElementById("money").addEventListener("click", () => this.toggleLedger());
     document.getElementById("ledger-close").addEventListener("click", () => this.toggleLedger());
 
+    this.initHelp();
+
     this.tickClock();
     setInterval(() => this.tickClock(), 10_000);
+  },
+
+  // How to Play window. Opens on load unless "Don't show this again" was ticked before.
+  // Browser storage can be blocked (private windows, previews), so every access is guarded.
+  initHelp() {
+    const hideBox = document.getElementById("help-hide");
+    const close = () => {
+      this.helpEl.hidden = true;
+      try {
+        localStorage.setItem(HELP_HIDDEN_KEY, hideBox.checked ? "1" : "");
+      } catch {
+        // Can't remember the choice; the window just shows again next time
+      }
+    };
+    document.getElementById("help-ok").addEventListener("click", close);
+    document.getElementById("help-close").addEventListener("click", close);
+
+    let hidden = false;
+    try {
+      hidden = localStorage.getItem(HELP_HIDDEN_KEY) === "1";
+    } catch {
+      hidden = false;
+    }
+    hideBox.checked = hidden;
+    if (!hidden) this.openWindow(this.helpEl);
   },
 
   // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape.
@@ -86,7 +116,7 @@ const UI = {
       });
     }
 
-    const windows = { shop: this.shopEl, ledger: document.getElementById("ledger") };
+    const windows = { shop: this.shopEl, ledger: document.getElementById("ledger"), help: this.helpEl };
     for (const button of this.menuEl.querySelectorAll("button[data-open]")) {
       button.addEventListener("click", () => {
         this.openWindow(windows[button.dataset.open]);
@@ -131,6 +161,7 @@ const UI = {
   openWindow(el) {
     this.ledgerEl.hidden = true;
     this.shopEl.hidden = true;
+    this.helpEl.hidden = true;
     el.hidden = false;
     if (el === this.ledgerEl) this.listedEntries = -1; // rebuild the list now it shows
   },
