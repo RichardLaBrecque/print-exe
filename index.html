@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Print.exe</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #008080;
+      font-family: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, sans-serif;
+      font-size: 13px;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+    }
+
+    #game {
+      flex: 1;
+      display: block;
+      width: 100%;
+      min-height: 0;
+      touch-action: none;
+    }
+
+    /* Win95 bevels, done with stacked inset shadows (outer + inner edge). */
+    .raised {
+      background: #C0C0C0;
+      box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #dfdfdf,
+                  inset -2px -2px #808080, inset 2px 2px #ffffff;
+    }
+
+    .sunken {
+      box-shadow: inset -1px -1px #ffffff, inset 1px 1px #808080,
+                  inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+    }
+
+    #taskbar {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 36px;
+      padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+      background: #C0C0C0;
+      box-shadow: inset 0 1px #dfdfdf, inset 0 2px #ffffff;
+    }
+
+    #start {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 26px;
+      padding: 0 6px;
+      font: inherit;
+      font-weight: bold;
+      border: 0;
+    }
+
+    #start .logo {
+      display: grid;
+      grid-template-columns: 6px 6px;
+      gap: 1px;
+    }
+    #start .logo i { width: 6px; height: 6px; display: block; }
+
+    .panel {
+      height: 26px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #holding { flex: 1; min-width: 0; }
+    #holding span { overflow: hidden; text-overflow: ellipsis; }
+
+    button.panel {
+      font: inherit;
+      color: inherit;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    [hidden] { display: none !important; }
+
+    /* Money counter over the shop floor, Minesweeper-style */
+    #money {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 3px;
+      padding: 5px 6px 4px;
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #money-value {
+      padding: 3px 8px;
+      background: #000;
+      color: #ff2020;
+      font: bold 26px/1 "Courier New", Courier, monospace;
+      letter-spacing: 1px;
+      text-align: right;
+    }
+
+    #money-value.bump { animation: bump 0.4s ease-out; }
+
+    @keyframes bump {
+      from { color: #ffff40; text-shadow: 0 0 8px #ffff40; }
+      to { color: #ff2020; text-shadow: none; }
+    }
+
+    #money-rate, #money-costs, #money-bill { font-size: 11px; text-align: right; }
+    #money-rate { font-weight: bold; color: #006000; }
+    #money-costs { color: #800000; }
+
+    /* Overdue: the panel flashes and the bill line becomes the bankruptcy countdown */
+    #money.overdue { animation: overdue 0.8s steps(1) infinite; }
+    #money.overdue #money-bill { color: #fff; background: #c00000; font-weight: bold; padding: 1px 3px; }
+
+    @keyframes overdue {
+      50% { background: #ff8080; }
+    }
+
+    /* Description tooltip for Shop rows */
+    #tooltip {
+      position: fixed;
+      z-index: 50;
+      max-width: 240px;
+      padding: 4px 6px;
+      background: #ffffe1;
+      border: 1px solid #000;
+      font-size: 12px;
+      line-height: 16px;
+      pointer-events: none;
+    }
+
+    #tooltip b { display: block; }
+
+    /* Bankruptcy: Win95 blue screen */
+    #bsod {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #0000aa;
+      color: #fff;
+      font: 16px/1.5 "Lucida Console", "Courier New", monospace;
+      cursor: pointer;
+    }
+
+    .bsod-box { max-width: 640px; }
+    .bsod-title { text-align: center; }
+    .bsod-title span { background: #aaaaaa; color: #0000aa; padding: 0 8px; }
+    #bsod ul { padding-left: 1.5em; list-style: "*  "; }
+    .bsod-press { text-align: center; }
+    .cursor { animation: blink 1s steps(1) infinite; }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    /* Pressed-in look for the open Start button and the active tool's task button */
+    .pressed {
+      background: #dfdfdf;
+      box-shadow: inset -1px -1px #ffffff, inset 1px 1px #0a0a0a,
+                  inset -2px -2px #dfdfdf, inset 2px 2px #808080;
+    }
+
+    #taskbar { position: relative; }
+
+    #tool-chip {
+      height: 26px;
+      padding: 0 8px;
+      border: 0;
+      font: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    /* Start menu, opens upward from the Start button */
+    #start-menu {
+      position: absolute;
+      left: 2px;
+      bottom: calc(100% - 2px);
+      z-index: 20;
+      display: flex;
+      min-width: 210px;
+      padding: 3px;
+    }
+
+    #start-menu .banner {
+      display: flex;
+      align-items: flex-end;
+      width: 26px;
+      background: #808080;
+    }
+
+    #start-menu .banner span {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      padding: 8px 3px;
+      color: #c0c0c0;
+      font-size: 20px;
+      letter-spacing: 1px;
+    }
+
+    #start-menu .banner b { color: #fff; }
+
+    #start-menu ul { flex: 1; margin: 0; padding: 0; list-style: none; }
+
+    #start-menu li button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      height: 32px;
+      padding: 0 10px 0 4px;
+      border: 0;
+      background: transparent;
+      color: #000;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    #start-menu li button:hover,
+    #start-menu li button:focus-visible {
+      background: #000080;
+      color: #fff;
+      outline: none;
+    }
+
+    #start-menu .check { width: 14px; text-align: center; }
+    #start-menu button.checked .check::before { content: "●"; font-size: 9px; }
+    #start-menu .key { margin-left: auto; padding-left: 16px; color: #808080; font-size: 11px; }
+    #start-menu li button:hover .key { color: #c0c0c0; }
+
+    #start-menu .sep {
+      margin: 3px 2px;
+      border-top: 1px solid #808080;
+      border-bottom: 1px solid #fff;
+    }
+
+    .shop-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: min(420px, 55vh);
+      overflow-y: auto;
+    }
+
+    .shop-heading {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 4px;
+      font-weight: bold;
+    }
+
+    .shop-heading .note { font-weight: normal; font-size: 11px; color: #800000; }
+
+    /* Message box */
+    #dialog { z-index: 30; top: 30%; }
+    .dialog-body { display: flex; gap: 12px; align-items: flex-start; }
+    .dialog-body p { margin: 0; line-height: 1.4; }
+
+    .dialog-icon {
+      flex: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #000080;
+      color: #000080;
+      font: bold italic 20px/28px Georgia, serif;
+      text-align: center;
+    }
+
+    .dialog-buttons { display: flex; justify-content: center; padding: 4px 0 6px; }
+
+    #dialog-ok {
+      min-width: 75px;
+      height: 24px;
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .shop-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      background: #fff;
+    }
+
+    .shop-item .name { flex: 1; }
+    .shop-item .size { color: #808080; font-size: 11px; }
+    .shop-item .price { font-weight: bold; min-width: 44px; text-align: right; }
+
+    .shop-item button {
+      width: 48px;
+      height: 24px;
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .shop-item button:disabled {
+      color: #808080;
+      text-shadow: 1px 1px #fff;
+      cursor: default;
+    }
+
+    /* Win95 window */
+    .window {
+      position: absolute;
+      top: 84px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(320px, calc(100% - 32px));
+      padding: 3px;
+      z-index: 10;
+    }
+
+    .title-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 20px;
+      padding: 0 2px 0 4px;
+      background: #000080;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .title-bar button {
+      width: 16px;
+      height: 14px;
+      padding: 0;
+      border: 0;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      line-height: 1;
+      color: #000;
+      cursor: pointer;
+    }
+
+    .window-body { padding: 8px 6px 6px; }
+
+    .stats { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    .stats td { padding: 2px 0; }
+    .stats td:last-child { text-align: right; font-weight: bold; }
+
+    .list {
+      height: 140px;
+      overflow-y: auto;
+      padding: 4px 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .list .row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+    .list .row .amount { color: #006000; }
+    .list .row .amount.spent { color: #c00000; }
+    .list .empty { color: #808080; }
+
+    @media (max-width: 380px) {
+      #clock { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <button id="money" class="raised" type="button" title="Open the ledger">
+    <span id="money-value" class="sunken">$000000</span>
+    <span id="money-rate">Income $0.0/s</span>
+    <span id="money-costs">Costs $0.0/s</span>
+    <span id="money-bill">Rent $0 in 2:00</span>
+  </button>
+
+  <div id="tooltip" role="tooltip" hidden><b id="tooltip-title"></b><span id="tooltip-text"></span></div>
+
+  <div id="bsod" hidden>
+    <div class="bsod-box">
+      <p class="bsod-title"><span>Print95</span></p>
+      <p>A fatal exception 0E has occurred at 0028:C0011E36 in VXD PRINTSHOP(01).
+        Your shop has gone bankrupt and the current print run will be terminated.</p>
+      <ul>
+        <li>Time in business: <span id="bsod-time"></span></li>
+        <li>Total earned: <span id="bsod-earned"></span></li>
+        <li>Peak income: <span id="bsod-peak"></span></li>
+        <li>Machines owned: <span id="bsod-machines"></span></li>
+      </ul>
+      <p class="bsod-press">Press any key or tap to open a new shop <span class="cursor">_</span></p>
+    </div>
+  </div>
+
+  <div id="shop" class="window raised" hidden>
+    <div class="title-bar">
+      <span>Shop.exe</span>
+      <button id="shop-close" class="raised" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="window-body">
+      <div id="shop-list" class="shop-list"></div>
+    </div>
+  </div>
+
+  <div id="dialog" class="window raised" role="alertdialog" aria-labelledby="dialog-title" hidden>
+    <div class="title-bar">
+      <span id="dialog-title">Print95</span>
+    </div>
+    <div class="window-body dialog-body">
+      <div class="dialog-icon" aria-hidden="true">i</div>
+      <p id="dialog-text"></p>
+    </div>
+    <div class="dialog-buttons">
+      <button id="dialog-ok" class="raised" type="button">OK</button>
+    </div>
+  </div>
+
+  <div id="ledger" class="window raised" hidden>
+    <div class="title-bar">
+      <span>Ledger.exe</span>
+      <button id="ledger-close" class="raised" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="window-body">
+      <table class="stats">
+        <tr><td>Cash on hand</td><td id="stat-cash">$0</td></tr>
+        <tr><td>Total earned</td><td id="stat-earned">$0</td></tr>
+        <tr><td>Total spent</td><td id="stat-spent">$0</td></tr>
+        <tr><td>Items sold</td><td id="stat-sold">0</td></tr>
+        <tr><td>Last 60 seconds</td><td id="stat-rate">$0</td></tr>
+      </table>
+      <div id="ledger-list" class="list sunken"></div>
+    </div>
+  </div>
+
+  <div id="taskbar">
+    <div id="start-menu" class="raised" hidden>
+      <div class="banner"><span><b>Print</b>95</span></div>
+      <ul>
+        <li><button type="button" data-tool="select"><span class="check"></span>Select<span class="key">V</span></button></li>
+        <li><button type="button" data-tool="belt"><span class="check"></span>Belt ($2)<span class="key">B</span></button></li>
+        <li data-license="production"><button type="button" data-tool="express"><span class="check"></span>Express Belt ($6)<span class="key">X</span></button></li>
+        <li><button type="button" data-tool="splitter"><span class="check"></span>Splitter ($10)<span class="key">S</span></button></li>
+        <li><button type="button" data-tool="bridge"><span class="check"></span>Bridge ($8)<span class="key">R</span></button></li>
+        <li><button type="button" data-tool="erase"><span class="check"></span>Erase<span class="key">E</span></button></li>
+        <li><button type="button" data-tool="upgrade"><span class="check"></span>Upgrade<span class="key">U</span></button></li>
+        <li class="sep" role="separator"></li>
+        <li><button type="button" data-open="shop"><span class="check"></span>Shop...</button></li>
+        <li><button type="button" data-open="ledger"><span class="check"></span>Ledger...</button></li>
+        <li class="sep" role="separator"></li>
+        <li><button type="button" data-action="fit"><span class="check"></span>View Whole Floor<span class="key">F</span></button></li>
+      </ul>
+    </div>
+
+    <button id="start" class="raised" type="button">
+      <span class="logo">
+        <i style="background:#ff0000"></i><i style="background:#00a000"></i>
+        <i style="background:#0000ff"></i><i style="background:#ffd800"></i>
+      </span>
+      Start
+    </button>
+    <button id="tool-chip" class="pressed" type="button" title="Back to Select" hidden></button>
+    <button id="cash" class="panel sunken" type="button" title="Open the ledger">Cash: $0</button>
+    <div id="holding" class="panel sunken"><span>Holding: Nothing</span></div>
+    <div id="clock" class="panel sunken">12:00 PM</div>
+  </div>
+
+  <script src="machines.js"></script>
+  <script src="production.js"></script>
+  <script src="belts.js"></script>
+  <script src="catalog.js"></script>
+  <script src="ui.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,849 @@
+// Machine definitions. Each machine sits on the shop-floor grid, owns its own
+// state, decides whether a tap does anything, and draws itself in world space.
+//
+// Footprint layout, one tile column each:  [ IN ] [ body ... ] [ OUT ]
+// A machine without an in or out tray just skips that column.
+
+const TILE = 64;
+
+// Every item in the game, by display name. Also what the player's hand can hold.
+const HAND = {
+  EMPTY: null,
+  // The four states of paper: blank or printed, sheet or roll. Printed paper also carries
+  // the job it was printed for (see JOBS). Saddle-stitch sheets come from either a desktop
+  // printer or a sheeter, so tier 1 and tier 2 machines can feed each other.
+  BLANK_SHEET: "Blank Sheet",
+  BLANK_ROLL: "Blank Roll",
+  SADDLE_SHEET: "Printed Sheet: Saddle-Stitch",
+  COVER_SHEET: "Printed Sheet: Cover",
+  GUTS_SHEET: "Printed Sheet: Guts",
+  SADDLE_ROLL: "Printed Roll: Saddle-Stitch",
+  COVER_ROLL: "Printed Roll: Cover",
+  GUTS_ROLL: "Printed Roll: Guts",
+  // Finished goods
+  ZINE: "Zine",
+  BOOK: "Saddle-Stitched Book",
+  PERFECT_BOOK: "Perfect-Bound Book",
+  SADDLE_PALLET: "Pallet: Saddle-Stitched",
+  PERFECT_PALLET: "Pallet: Perfect-Bound",
+};
+
+// Press job settings: Saddle-Stitch, Cover or Guts, in the order a tap cycles them.
+const JOBS = [
+  { name: "Saddle-Stitch", label: "SADDLE", roll: HAND.SADDLE_ROLL, sheet: HAND.SADDLE_SHEET, color: "#9b8cff" },
+  { name: "Cover", label: "COVER", roll: HAND.COVER_ROLL, sheet: HAND.COVER_SHEET, color: "#e5703a" },
+  { name: "Guts", label: "GUTS", roll: HAND.GUTS_ROLL, sheet: HAND.GUTS_SHEET, color: "#4caf50" },
+];
+const PRINTED_ROLLS = JOBS.map((job) => job.roll);
+const PRINTED_SHEETS = JOBS.map((job) => job.sheet);
+
+// The job a printed sheet or roll belongs to, or undefined for anything else.
+function jobOf(item) {
+  return JOBS.find((job) => job.roll === item || job.sheet === item);
+}
+
+// Rolls are too heavy to carry; only belts move them.
+function canCarry(item) {
+  return item !== HAND.BLANK_ROLL && !PRINTED_ROLLS.includes(item);
+}
+
+// Production ratios, built around a belt carrying 1 item a second:
+//   2 printers (4 s each) feed 1 Auto Stapler (2 s each),
+//   and 2 Auto Staplers fill 1 belt.
+// The Auto Stapler is still slower than a person tapping quickly.
+const PRINT_SECONDS = 4;
+const AUTO_STAPLE_SECONDS = 2;
+const STAPLER_UPGRADE_COST = 120;
+const AUTO_STAPLER_UPKEEP = 6; // $ per minute, up from the Manual Stapler's 2
+const SHIP_SECONDS = 0.6;
+const TRAY_SIZE = 5;
+const ZINE_PRICE = 10;
+const INK = "#4a4f5c";
+
+// Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
+// of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
+class Tray {
+  constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false }) {
+    this.item = item; // the kind held now; null when it takes anything or a multi-kind tray is empty
+    this.kinds = kinds;
+    this.capacity = capacity;
+    this.endless = endless; // never fills up or runs out
+    this.count = 0;
+    this.lastServed = ""; // key of the belt served last, so belts take turns
+  }
+
+  accepts(hand) {
+    if (hand === HAND.EMPTY) return false;
+    if (this.kinds) {
+      if (!this.kinds.includes(hand)) return false;
+      if (this.count > 0 && this.item !== hand) return false;
+    } else if (this.item !== null && this.item !== hand) {
+      return false;
+    }
+    return !this.isFull();
+  }
+
+  // Whether `item` could go in once there's room: right kind, and no other kind in the way.
+  fits(item) {
+    if (this.kinds) return this.kinds.includes(item) && (this.count === 0 || this.item === item);
+    return this.item === null || this.item === item;
+  }
+
+  hasItem() { return this.endless || this.count > 0; }
+  isFull() { return !this.endless && this.count >= this.capacity; }
+
+  put(item) {
+    if (this.kinds) this.item = item;
+    if (!this.endless) this.count += 1;
+  }
+
+  // Removes one and returns it. Read the item from here, not from `item` afterwards:
+  // a multi-kind tray forgets its kind once it's empty.
+  take() {
+    const item = this.item;
+    if (!this.endless) this.count -= 1;
+    if (this.kinds && this.count === 0) this.item = null;
+    return item;
+  }
+
+  // What to draw in the slot: the kind held, or the first kind it takes.
+  get shownItem() {
+    return this.item ?? this.kinds?.[0] ?? null;
+  }
+}
+
+class Machine {
+  // Give `inTray` for one input, or `inputs: [{ label, tray }]` for several. Inputs stack
+  // down the first column, one share of the rows each, so a belt feeds whichever it points at.
+  constructor(title, { col, row, cols, rows, accent, upkeep = 0, description = "", inTray = null, inputs = null, outTray = null }) {
+    this.title = title;
+    this.description = description; // one or two sentences for the hover tooltip
+    this.upkeep = upkeep; // $ per minute, billed with rent
+    this.col = col;
+    this.row = row;
+    this.cols = cols;
+    this.rows = rows;
+    this.accent = accent;
+    this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
+    this.outTray = outTray;
+    this.shake = 0;
+  }
+
+  // The first (usually only) input tray.
+  get inTray() {
+    return this.inputs[0]?.tray ?? null;
+  }
+
+  // World-space footprint in pixels.
+  get rect() {
+    return { x: this.col * TILE, y: this.row * TILE, w: this.cols * TILE, h: this.rows * TILE };
+  }
+
+  // Tappable parts: "in:0", "in:1", ... for each input, then "out" and "body".
+  get parts() {
+    return [...this.inputs.map((_input, i) => `in:${i}`), "out", "body"];
+  }
+
+  trayFor(part) {
+    if (part === "out") return this.outTray;
+    if (part?.startsWith("in:")) return this.inputs[Number(part.slice(3))].tray;
+    return null;
+  }
+
+  // World-space rect for a part, or null if the machine doesn't have it.
+  partRect(part) {
+    const { x, y, w, h } = this.rect;
+    const inW = this.inputs.length > 0 ? TILE : 0;
+    const outW = this.outTray ? TILE : 0;
+
+    if (part.startsWith("in:")) {
+      const i = Number(part.slice(3));
+      const share = Math.floor(this.rows / this.inputs.length) * TILE;
+      const top = y + i * share;
+      const last = i === this.inputs.length - 1;
+      return { x, y: top, w: TILE, h: last ? y + h - top : share };
+    }
+    if (part === "out") return this.outTray ? { x: x + w - TILE, y, w: TILE, h } : null;
+    if (w - inW - outW <= 0) return null;
+    return { x: x + inW, y, w: w - inW - outW, h };
+  }
+
+  partAt(wx, wy) {
+    for (const part of this.parts) {
+      const r = this.partRect(part);
+      if (r && wx >= r.x && wx <= r.x + r.w && wy >= r.y && wy <= r.y + r.h) return part;
+    }
+    return null;
+  }
+
+  contains(wx, wy) {
+    const { x, y, w, h } = this.rect;
+    return wx >= x && wx <= x + w && wy >= y && wy <= y + h;
+  }
+
+  // Tap handling, one trio per part ------------------------------------------
+
+  canUse(game, part) {
+    if (part?.startsWith("in:")) return this.trayFor(part).accepts(game.hand);
+    if (part === "out") return game.hand === HAND.EMPTY && this.outTray.hasItem() && canCarry(this.outTray.item);
+    if (part === "body") return this.canActivate(game);
+    return false;
+  }
+
+  use(game, part) {
+    if (part.startsWith("in:")) {
+      this.trayFor(part).put(game.hand);
+      game.hand = HAND.EMPTY;
+    } else if (part === "out") {
+      game.hand = this.outTray.take();
+    } else {
+      this.activate(game);
+    }
+  }
+
+  hint(game, part) {
+    if (part?.startsWith("in:")) {
+      const tray = this.trayFor(part);
+      if (game.hand === HAND.EMPTY) return `Drop ${tray.item ?? "anything"} here.`;
+      if (tray.item !== null && tray.item !== game.hand) return `Only takes ${tray.item}.`;
+      return "In tray is full.";
+    }
+    if (part === "out") {
+      if (!canCarry(this.outTray.item)) return "Rolls are too heavy to carry. Move them with belts.";
+      if (game.hand !== HAND.EMPTY) return "Your hands are full.";
+      return "Nothing to collect yet.";
+    }
+    return this.bodyHint(game);
+  }
+
+  // Manual machines override these three.
+  canActivate(_game) { return false; }
+  activate(_game) {}
+  bodyHint(_game) { return "Runs on its own."; }
+
+  // Upgrades. Machines that can be upgraded override these.
+  upgradeCost() { return null; } // price of the next upgrade, or null if none left
+  upgradeHint() { return "No upgrades for this machine."; }
+  upgrade() {}
+
+  // 0..1 to show a progress bar in the body, or null for none.
+  progress() { return null; }
+
+  update(dt, _game) {
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
+  }
+
+  // Drawing ------------------------------------------------------------------
+
+  draw(ctx, game) {
+    const inset = 6;
+    const offset = this.shake > 0 ? Math.sin(this.shake * 70) * 4 : 0;
+    const { x, y, w, h } = this.rect;
+    const bx = x + inset;
+    const by = y + inset;
+    const bw = w - inset * 2;
+    const bh = h - inset * 2;
+
+    ctx.save();
+    ctx.translate(offset, 0);
+
+    // Drop shadow
+    ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
+    ctx.beginPath();
+    ctx.roundRect(bx + 3, by + 5, bw, bh, 8);
+    ctx.fill();
+
+    // Body with a colored stripe across the top
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 8);
+    ctx.fillStyle = "#fafafa";
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = this.accent;
+    ctx.fillRect(bx, by, bw, 10);
+    ctx.restore();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+
+    this.inputs.forEach((input, i) => this.drawTray(ctx, this.partRect(`in:${i}`), input.tray, input.label));
+    if (this.outTray) this.drawTray(ctx, this.partRect("out"), this.outTray, "OUT");
+
+    const body = this.partRect("body");
+    if (body) this.drawBody(ctx, body);
+
+    ctx.restore();
+
+    // Marching-ants outline on every part that would do something if tapped
+    for (const part of this.parts) {
+      const r = this.partRect(part);
+      if (r && game.tool === "select" && this.canUse(game, part)) drawAnts(ctx, r, this.accent, game.time);
+    }
+  }
+
+  drawTray(ctx, r, tray, label) {
+    // Sunken slot. Leave room for the stripe only at the top edge, and the frame only at the bottom.
+    const atTop = r.y === this.rect.y;
+    const atBottom = r.y + r.h === this.rect.y + this.rect.h;
+    const sx = r.x + 12;
+    const sy = r.y + (atTop ? 20 : 4);
+    const sw = r.w - 24;
+    const sh = r.h - (atTop ? 20 : 4) - (atBottom ? 12 : 4);
+    ctx.fillStyle = "#e4e4ea";
+    ctx.beginPath();
+    ctx.roundRect(sx, sy, sw, sh, 5);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#b8b8c4";
+    ctx.stroke();
+
+    ctx.font = Draw.font(9, true);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = INK;
+    ctx.fillText(label, sx + sw / 2, sy + 3);
+
+    // Contents
+    // Icon fits between the label (top 12) and the count (bottom 12), so short slots stay readable
+    const s = Math.min(sw * 0.55, sh - 24);
+    const cx = sx + sw / 2;
+    const cy = sy + 12 + (sh - 24) / 2;
+    ctx.lineWidth = 2;
+    if (tray.shownItem === null) {
+      this.drawIcon(ctx, cx - s / 2, cy - s / 2, s);
+    } else {
+      ctx.globalAlpha = tray.hasItem() ? 1 : 0.25;
+      drawItem(ctx, tray.shownItem, cx - s / 2, cy - s / 2, s);
+      ctx.globalAlpha = 1;
+    }
+
+    // Count, red when full so you know the machine is blocked
+    if (!tray.endless) {
+      ctx.font = Draw.font(10, true);
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = tray.isFull() ? "#d93030" : INK;
+      ctx.fillText(`${tray.count}/${tray.capacity}`, cx, sy + sh - 2);
+    } else if (label === "OUT") {
+      ctx.font = Draw.font(12, true);
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = INK;
+      ctx.fillText("∞", cx, sy + sh - 1);
+    }
+    ctx.textAlign = "left";
+  }
+
+  // Small caps label across the top of the body, e.g. a supply's ORDER price or a press's job.
+  drawBodyLabel(ctx, r, text, color) {
+    ctx.font = Draw.font(10, true);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = color;
+    ctx.fillText(text, r.x + r.w / 2, r.y + 22, r.w - 8);
+    ctx.textAlign = "left";
+  }
+
+  drawBody(ctx, r) {
+    const s = Math.min(r.w, r.h) * 0.5;
+    ctx.lineWidth = 2;
+    this.drawIcon(ctx, r.x + r.w / 2 - s / 2, r.y + r.h / 2 - s / 2 + 3, s);
+
+    const bar = this.progress();
+    if (bar !== null) {
+      const px = r.x + 6;
+      const pw = r.w - 12;
+      const py = r.y + r.h - 20;
+      ctx.fillStyle = "#d8d8de";
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, 7, 3);
+      ctx.fill();
+      ctx.fillStyle = this.accent;
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw * bar, 7, 3);
+      ctx.fill();
+    }
+  }
+
+  drawIcon(_ctx, _x, _y, _s) {}
+}
+
+function drawAnts(ctx, r, color, time) {
+  ctx.setLineDash([10, 6]);
+  ctx.lineDashOffset = -time * 30;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Item icons, drawn into an s-by-s box at (x, y).
+function drawItem(ctx, item, x, y, s) {
+  ctx.strokeStyle = INK;
+  if (item === HAND.BLANK_SHEET) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + s * 0.15, y, s * 0.7, s);
+    ctx.strokeRect(x + s * 0.15, y, s * 0.7, s);
+  } else if (PRINTED_SHEETS.includes(item)) {
+    // Two sheets with print bars in the job's color; a cover's front is solid color
+    const job = jobOf(item);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + s * 0.25, y, s * 0.65, s * 0.9);
+    ctx.strokeRect(x + s * 0.25, y, s * 0.65, s * 0.9);
+    ctx.fillStyle = item === HAND.COVER_SHEET ? job.color : "#ffffff";
+    ctx.fillRect(x + s * 0.1, y + s * 0.1, s * 0.65, s * 0.9);
+    ctx.strokeRect(x + s * 0.1, y + s * 0.1, s * 0.65, s * 0.9);
+    ctx.fillStyle = item === HAND.COVER_SHEET ? "#ffffff" : job.color;
+    for (const f of [0.3, 0.45, 0.6, 0.75]) ctx.fillRect(x + s * 0.2, y + s * f, s * 0.45, s * 0.06);
+  } else if (item === HAND.ZINE) {
+    ctx.fillStyle = "#ffe08a";
+    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.8, s * 0.9);
+    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.8, s * 0.9);
+    ctx.fillStyle = INK;
+    ctx.fillRect(x + s * 0.48, y + s * 0.05, s * 0.04, s * 0.9); // spine
+    ctx.fillStyle = "#d93030";
+    ctx.fillRect(x + s * 0.44, y + s * 0.25, s * 0.12, s * 0.06); // staples
+    ctx.fillRect(x + s * 0.44, y + s * 0.7, s * 0.12, s * 0.06);
+  } else if (item === HAND.BLANK_ROLL || PRINTED_ROLLS.includes(item)) {
+    // Roll seen end-on: paper, a band in the job's color if printed, and the core
+    const cx = x + s / 2;
+    const cy = y + s / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.46, 0, Math.PI * 2);
+    ctx.fillStyle = "#fbf7ec";
+    ctx.fill();
+    ctx.stroke();
+    if (item !== HAND.BLANK_ROLL) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.34, 0, Math.PI * 2);
+      ctx.lineWidth = s * 0.12;
+      ctx.strokeStyle = jobOf(item).color;
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = INK;
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, s * 0.14, 0, Math.PI * 2);
+    ctx.fillStyle = "#c08850";
+    ctx.fill();
+    ctx.stroke();
+  } else if (item === HAND.BOOK) {
+    // Thicker book: blue cover, page edges, stitched spine
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + s * 0.16, y + s * 0.12, s * 0.74, s * 0.8);
+    ctx.strokeRect(x + s * 0.16, y + s * 0.12, s * 0.74, s * 0.8);
+    ctx.fillStyle = "#3a6fd8";
+    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.74, s * 0.8);
+    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.74, s * 0.8);
+    ctx.fillStyle = "#ffffff";
+    for (const f of [0.2, 0.42, 0.64]) ctx.fillRect(x + s * 0.13, y + s * f, s * 0.06, s * 0.08);
+  } else if (item === HAND.PERFECT_BOOK) {
+    // Thick block of pages wrapped in an orange cover with a square, glued spine
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + s * 0.24, y + s * 0.12, s * 0.66, s * 0.8);
+    ctx.strokeRect(x + s * 0.24, y + s * 0.12, s * 0.66, s * 0.8);
+    ctx.fillStyle = "#e5703a";
+    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.72, s * 0.8);
+    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.72, s * 0.8);
+    ctx.fillStyle = "#b34f20";
+    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8); // spine
+    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8);
+  } else if (item === HAND.SADDLE_PALLET || item === HAND.PERFECT_PALLET) {
+    // Wrapped stack of boxes on a wooden pallet, boxes tinted by the kind of book
+    ctx.fillStyle = "#c08850";
+    ctx.fillRect(x, y + s * 0.8, s, s * 0.14);
+    ctx.strokeRect(x, y + s * 0.8, s, s * 0.14);
+    ctx.fillStyle = item === HAND.PERFECT_PALLET ? "#e5a06a" : "#9fb4e0";
+    ctx.fillRect(x + s * 0.06, y + s * 0.1, s * 0.88, s * 0.7);
+    ctx.strokeRect(x + s * 0.06, y + s * 0.1, s * 0.88, s * 0.7);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)"; // stretch wrap
+    ctx.fillRect(x + s * 0.06, y + s * 0.25, s * 0.88, s * 0.12);
+    ctx.fillRect(x + s * 0.06, y + s * 0.55, s * 0.88, s * 0.12);
+    ctx.fillStyle = INK;
+    ctx.fillRect(x + s * 0.49, y + s * 0.1, s * 0.02, s * 0.7);
+  }
+}
+
+// Holds a stock of paper that you pay to restock. Tap the body to order a delivery;
+// a truck drops it off after a short wait. The IN and OUT trays are the same stock,
+// so you can put paper back. One upgrade adds auto-reorder.
+class Supply extends Machine {
+  constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, ...rest }) {
+    const stock = new Tray({ item, capacity });
+    stock.count = startStock;
+    super(title, { ...rest, cols: 3, rows: 2, inTray: stock, outTray: stock });
+    this.delivery = delivery; // { amount, price, seconds }
+    this.reorderCost = reorderCost;
+    this.sample = sample; // free sheets sent when you're broke and out of paper, so you can't get stuck
+    this.pending = 0; // seconds until the ordered delivery arrives, 0 = none on the way
+    this.incoming = 0; // how much that delivery brings
+    this.autoReorder = false;
+  }
+
+  hasRoomForDelivery() {
+    return this.inTray.count + this.delivery.amount <= this.inTray.capacity;
+  }
+
+  // A sample is free, only when broke and fully out.
+  sampleDue(game) {
+    return this.sample > 0 && this.inTray.count === 0 && game.cash < this.delivery.price;
+  }
+
+  canActivate(game) {
+    if (this.pending > 0 || !this.hasRoomForDelivery()) return false;
+    return game.cash >= this.delivery.price || this.sampleDue(game);
+  }
+
+  activate(game) {
+    const { x, y, w } = this.rect;
+    if (game.cash < this.delivery.price) {
+      this.order(this.sample);
+      game.showTip(`The supplier sent ${this.sample} free samples.`, x + w / 2, y);
+      return;
+    }
+    game.spend(this.delivery.price, `${this.title} delivery`);
+    game.floatText(`-${money(this.delivery.price)}`, x + w / 2, y, "#d93030");
+    this.order(this.delivery.amount);
+  }
+
+  order(amount) {
+    this.incoming = amount;
+    this.pending = this.delivery.seconds;
+  }
+
+  bodyHint(game) {
+    if (this.pending > 0) return "Delivery on the way.";
+    if (!this.hasRoomForDelivery()) return `No room for ${this.delivery.amount} more. Use some first.`;
+    return `Need ${money(this.delivery.price)} for a delivery.`;
+  }
+
+  upgradeCost() { return this.autoReorder ? null : this.reorderCost; }
+  upgradeHint() { return "Already reorders on its own."; }
+  upgrade() { this.autoReorder = true; }
+
+  progress() {
+    if (this.pending === 0) return null;
+    return 1 - this.pending / this.delivery.seconds;
+  }
+
+  update(dt, game) {
+    super.update(dt, game);
+    if (this.pending > 0) {
+      this.pending = Math.max(0, this.pending - dt);
+      if (this.pending === 0) this.inTray.count = Math.min(this.inTray.capacity, this.inTray.count + this.incoming);
+      return;
+    }
+    if (this.autoReorder && this.hasRoomForDelivery() && game.cash >= this.delivery.price) this.activate(game);
+  }
+
+  drawBody(ctx, r) {
+    super.drawBody(ctx, r);
+    // Order button label, so it's clear the body is tappable
+    const label = this.pending > 0 ? "ARRIVING" : this.autoReorder ? "AUTO" : `ORDER ${money(this.delivery.price)}`;
+    this.drawBodyLabel(ctx, r, label, INK);
+  }
+
+  // A stack of whatever this supply holds.
+  drawIcon(ctx, x, y, s) {
+    ctx.lineWidth = 2;
+    drawItem(ctx, this.inTray.item, x + s * 0.1, y + s * 0.2, s * 0.8);
+  }
+}
+
+// Tier 1 paper: Blank Sheets, delivered by the ream.
+class PaperSupply extends Supply {
+  constructor(at) {
+    super("Paper Supply", {
+      description: "Holds Blank Sheets. Tap the middle to order 20 more for $40.",
+      upkeep: 0,
+      ...at,
+      accent: "#5fb3d9",
+      item: HAND.BLANK_SHEET,
+      capacity: 40,
+      startStock: 20,
+      delivery: { amount: 20, price: 40, seconds: 3 }, // $2 a sheet
+      reorderCost: 100,
+      sample: 5,
+    });
+  }
+}
+
+// Turns one IN item into one OUT item every `seconds`, on its own, while there's
+// something in and room out. Printers, presses, sheeters and binders are all this.
+// `yields` items come out per item in, e.g. a Sheeter cuts 1 roll into 10 sheets.
+// `input` and `output` are one item, or a list for machines that handle several job types.
+class Converter extends Machine {
+  constructor(title, { input, output, seconds, yields = 1, capacity = TRAY_SIZE, outCapacity = capacity, ...rest }) {
+    super(title, {
+      ...rest,
+      inTray: Array.isArray(input) ? new Tray({ kinds: input, capacity }) : new Tray({ item: input, capacity }),
+      outTray: Array.isArray(output)
+        ? new Tray({ kinds: output, capacity: outCapacity })
+        : new Tray({ item: output, capacity: outCapacity }),
+    });
+    this.output = output;
+    this.seconds = seconds;
+    this.yields = yields;
+    this.working = false;
+    this.making = null; // the item the current job will produce
+    this.elapsed = 0;
+  }
+
+  // What a job on this input makes. Machines with several job types override it.
+  outputFor(_input) {
+    return this.output;
+  }
+
+  // The OUT tray can take everything one job makes: right kind and enough room.
+  canMake(item) {
+    return this.outTray.fits(item) && this.outTray.count + this.yields <= this.outTray.capacity;
+  }
+
+  // False when the next job is stuck waiting on the OUT tray.
+  hasRoom() {
+    if (this.inTray.count === 0) return this.outTray.count + this.yields <= this.outTray.capacity;
+    return this.canMake(this.outputFor(this.inTray.item));
+  }
+
+  progress() {
+    if (!this.working) return null;
+    return Math.min(1, this.elapsed / this.seconds);
+  }
+
+  bodyHint() {
+    if (!this.hasRoom()) return "OUT tray is full or holds a different job. Clear it first.";
+    return "Runs on its own. Load its IN tray.";
+  }
+
+  update(dt, game) {
+    super.update(dt, game);
+    if (this.working) {
+      this.elapsed += dt;
+      if (this.elapsed < this.seconds) return;
+      this.working = false;
+      for (let i = 0; i < this.yields; i++) this.outTray.put(this.making);
+      this.elapsed -= this.seconds; // carry the leftover into the next job so the rate stays exact
+    } else {
+      this.elapsed = 0;
+    }
+    if (this.inTray.count === 0) return;
+    const making = this.outputFor(this.inTray.item);
+    if (!this.canMake(making)) return;
+    this.inTray.take();
+    this.making = making;
+    this.working = true;
+  }
+
+  // Green while working, red when the OUT tray is full and it's stuck, dark when idle.
+  statusLight() {
+    if (this.working) return "#3ddc84";
+    return this.hasRoom() ? "#2e7d4f" : "#d93030";
+  }
+}
+
+class DesktopPrinter extends Converter {
+  constructor(at) {
+    super("Desktop Printer", {
+      description: `Prints Blank Sheets into saddle-stitch Printed Sheets, one every ${PRINT_SECONDS} seconds.`,
+      upkeep: 5,
+      ...at,
+      cols: 3,
+      rows: 2,
+      accent: "#9b8cff",
+      input: HAND.BLANK_SHEET,
+      output: HAND.SADDLE_SHEET,
+      seconds: PRINT_SECONDS,
+    });
+  }
+
+  drawIcon(ctx, x, y, s) {
+    ctx.strokeStyle = INK;
+    // Paper sticking out the top
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + s * 0.25, y, s * 0.5, s * 0.4);
+    ctx.strokeRect(x + s * 0.25, y, s * 0.5, s * 0.4);
+    // Body
+    ctx.fillStyle = "#b8b8c4";
+    ctx.fillRect(x, y + s * 0.3, s, s * 0.5);
+    ctx.strokeRect(x, y + s * 0.3, s, s * 0.5);
+    // Output slot and status light
+    ctx.fillStyle = INK;
+    ctx.fillRect(x + s * 0.15, y + s * 0.62, s * 0.7, s * 0.06);
+    ctx.fillStyle = this.statusLight();
+    ctx.fillRect(x + s * 0.78, y + s * 0.38, s * 0.1, s * 0.1);
+  }
+}
+
+// Manual: tap the body to staple one set of pages into a Zine.
+class ManualStapler extends Machine {
+  constructor(at) {
+    super("Manual Stapler", {
+      description: "Tap the middle to staple a saddle-stitch Printed Sheet into a Zine.",
+      upkeep: 2,
+      ...at,
+      cols: 3,
+      rows: 2,
+      accent: "#ff7a7a",
+      inTray: new Tray({ item: HAND.SADDLE_SHEET }),
+      outTray: new Tray({ item: HAND.ZINE }),
+    });
+    this.press = 0; // seconds left on the press-down animation
+    this.level = 0; // 1 = Auto Stapler
+    this.elapsed = 0; // auto-staple timer
+  }
+
+  // Tapping the body still staples instantly, even once automated.
+  canActivate() { return this.inTray.count > 0 && !this.outTray.isFull(); }
+
+  activate() {
+    this.inTray.take();
+    this.outTray.put(HAND.ZINE);
+    this.press = 0.15;
+    this.elapsed = 0;
+  }
+
+  bodyHint() {
+    if (this.outTray.isFull()) return "Out tray is full. Collect your Zines.";
+    return "Load Printed Pages in the IN tray first.";
+  }
+
+  upgradeCost() { return this.level === 0 ? STAPLER_UPGRADE_COST : null; }
+  upgradeHint() { return "Already an Auto Stapler."; }
+
+  upgrade() {
+    this.level = 1;
+    this.title = "Auto Stapler";
+    this.description = `Staples a saddle-stitch Printed Sheet into a Zine every ${AUTO_STAPLE_SECONDS} seconds on its own. Tap it to go faster.`;
+    this.upkeep = AUTO_STAPLER_UPKEEP;
+  }
+
+  progress() {
+    if (this.level === 0 || !this.canActivate()) return null;
+    return Math.min(1, this.elapsed / AUTO_STAPLE_SECONDS);
+  }
+
+  update(dt, game) {
+    super.update(dt, game);
+    if (this.press > 0) this.press = Math.max(0, this.press - dt);
+    if (this.level === 0) return;
+
+    // Automated: staple one set every AUTO_STAPLE_SECONDS while there's work and room
+    if (!this.canActivate()) {
+      this.elapsed = 0;
+      return;
+    }
+    this.elapsed += dt;
+    if (this.elapsed < AUTO_STAPLE_SECONDS) return;
+    const leftover = this.elapsed - AUTO_STAPLE_SECONDS; // keep the rate exact across frames
+    this.activate();
+    this.elapsed = leftover;
+  }
+
+  drawIcon(ctx, x, y, s) {
+    const drop = this.press > 0 ? s * 0.12 : 0;
+    ctx.strokeStyle = INK;
+    // Base
+    ctx.fillStyle = "#6b7080";
+    ctx.fillRect(x, y + s * 0.7, s, s * 0.2);
+    ctx.strokeRect(x, y + s * 0.7, s, s * 0.2);
+    // Arm
+    ctx.fillStyle = "#ff7a7a";
+    ctx.fillRect(x + s * 0.05, y + s * 0.4 + drop, s * 0.9, s * 0.22);
+    ctx.strokeRect(x + s * 0.05, y + s * 0.4 + drop, s * 0.9, s * 0.22);
+    // Hinge
+    ctx.fillStyle = "#b8b8c4";
+    ctx.fillRect(x + s * 0.8, y + s * 0.55, s * 0.15, s * 0.2);
+  }
+}
+
+// Sells Zines dropped in its IN tray, one at a time.
+class Outbox extends Machine {
+  constructor(at) {
+    super("Outbox", {
+      description: `Sells Zines for $${ZINE_PRICE} each.`,
+      upkeep: 2,
+      ...at,
+      cols: 2,
+      rows: 2,
+      accent: "#f2b866",
+      inTray: new Tray({ item: HAND.ZINE, capacity: 10 }),
+    });
+    this.shipped = 0;
+    this.elapsed = 0;
+  }
+
+  bodyHint() { return `Ships Zines for $${ZINE_PRICE} each. Shipped: ${this.shipped}`; }
+
+  progress() {
+    if (this.inTray.count === 0) return null;
+    return Math.min(1, this.elapsed / SHIP_SECONDS);
+  }
+
+  update(dt, game) {
+    super.update(dt, game);
+    if (this.inTray.count === 0) {
+      this.elapsed = 0;
+      return;
+    }
+    this.elapsed += dt;
+    if (this.elapsed < SHIP_SECONDS) return;
+
+    this.elapsed = 0;
+    this.inTray.take();
+    this.shipped += 1;
+    game.earn(ZINE_PRICE, "Zine sold");
+    const { x, y, w } = this.rect;
+    game.floatText(`+$${ZINE_PRICE}`, x + w / 2, y);
+  }
+
+  drawIcon(ctx, x, y, s) {
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = "#d9a066";
+    ctx.fillRect(x, y + s * 0.3, s, s * 0.6);
+    ctx.strokeRect(x, y + s * 0.3, s, s * 0.6);
+    // Open flaps
+    ctx.fillStyle = "#c08850";
+    ctx.fillRect(x - s * 0.08, y + s * 0.15, s * 0.45, s * 0.15);
+    ctx.fillRect(x + s * 0.63, y + s * 0.15, s * 0.45, s * 0.15);
+    // Tape
+    ctx.fillStyle = "#f2d9a6";
+    ctx.fillRect(x + s * 0.42, y + s * 0.3, s * 0.16, s * 0.6);
+  }
+}
+
+// Takes anything you're holding.
+class TrashCan extends Machine {
+  constructor(at) {
+    super("Trash Can", {
+      description: "Throws away anything you drop in it.",
+      upkeep: 0,
+      ...at,
+      cols: 1,
+      rows: 2,
+      accent: "#8a8f9c",
+      inTray: new Tray({ endless: true }),
+    });
+  }
+
+  use(game, part) {
+    const { x, y, w } = this.rect;
+    game.floatText(`- ${game.hand}`, x + w / 2, y, "#d93030");
+    super.use(game, part);
+  }
+
+  drawIcon(ctx, x, y, s) {
+    ctx.strokeStyle = INK;
+    // Lid and handle
+    ctx.fillStyle = "#6b7080";
+    ctx.fillRect(x + s * 0.4, y, s * 0.2, s * 0.08);
+    ctx.fillRect(x + s * 0.1, y + s * 0.08, s * 0.8, s * 0.1);
+    ctx.strokeRect(x + s * 0.1, y + s * 0.08, s * 0.8, s * 0.1);
+    // Bin with ribs
+    ctx.fillStyle = "#b8b8c4";
+    ctx.fillRect(x + s * 0.18, y + s * 0.22, s * 0.64, s * 0.75);
+    ctx.strokeRect(x + s * 0.18, y + s * 0.22, s * 0.64, s * 0.75);
+    ctx.fillStyle = "#8a8f9c";
+    for (const f of [0.33, 0.48, 0.63]) ctx.fillRect(x + s * f, y + s * 0.3, s * 0.05, s * 0.6);
+  }
+}
