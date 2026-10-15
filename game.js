@@ -665,7 +665,10 @@ const Game = {
       this.graceLeft = null;
     } else {
       this.graceLeft = (this.graceLeft ?? GRACE_SECONDS) - dt;
-      if (this.graceLeft <= 0) this.bankrupt = true;
+      if (this.graceLeft <= 0) {
+        this.bankrupt = true;
+        Save.clear(); // a reload after the blue screen starts a new shop
+      }
     }
 
     this.peakIncome = Math.max(this.peakIncome, this.incomePerSecond());
@@ -1163,10 +1166,18 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+// Pick up the autosaved shop, if there is one, before the first frame.
+const restored = Save.read(Game);
+
 UI.init({
   onTool: (tool) => Game.setTool(tool),
   onBuy: (entry) => Game.buy(entry),
   onFit: () => Camera.fit(),
+  onNewShop: () => Save.newShop(),
+  onSaveFile: () => Save.download(Game),
+  onOpenFile: (file) => Save.open(file, Game),
 });
+if (restored) UI.welcomeBack();
 layout();
+Save.startAutosave(Game);
 requestAnimationFrame(frame);

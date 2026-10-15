@@ -93,6 +93,26 @@ class Belt {
     return tileKey(this.col, this.row);
   }
 
+  // Save and load. `type` is the class name, which save.js maps back to a constructor.
+  saveState() {
+    return {
+      type: this.constructor.name,
+      col: this.col,
+      row: this.row,
+      dir: this.dir,
+      item: this.item,
+      progress: this.progress,
+      lastServed: this.lastServed,
+    };
+  }
+
+  loadState(s) {
+    this.dir = s.dir;
+    this.item = s.item;
+    this.progress = s.progress;
+    this.lastServed = s.lastServed;
+  }
+
   // Slide the item along. Hand-offs happen in moveItems so shared targets can take turns.
   // Progress may run up to one frame past 1, so the overshoot carries onto the next belt
   // and the rate stays exact instead of losing a frame at every square.
@@ -241,6 +261,15 @@ class Splitter extends Belt {
   constructor(col, row, dir) {
     super(col, row, dir);
     this.nextSide = 0; // 0 left, 1 right: the side that gets the next item
+  }
+
+  saveState() {
+    return { ...super.saveState(), nextSide: this.nextSide };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.nextSide = s.nextSide;
   }
 
   get title() { return "Splitter"; }
@@ -404,6 +433,15 @@ class Bridge {
 
   lanes() {
     return [this.over, this.under];
+  }
+
+  saveState() {
+    return { type: "Bridge", col: this.col, row: this.row, over: this.over.saveState(), under: this.under.saveState() };
+  }
+
+  loadState(s) {
+    this.over.loadState(s.over);
+    this.under.loadState(s.under);
   }
 
   moveTo(col, row) {

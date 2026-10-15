@@ -82,6 +82,15 @@ class RollPress extends Converter {
     this.job = JOBS[0];
   }
 
+  saveState() {
+    return { ...super.saveState(), job: JOBS.indexOf(this.job) };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.job = JOBS[s.job];
+  }
+
   // The job is set when a roll starts, so switching mid-print finishes the current roll as it was.
   outputFor() {
     return this.job.roll;
@@ -219,6 +228,16 @@ class BookBinder extends Machine {
     this.elapsed = 0;
   }
 
+  saveState() {
+    return { ...super.saveState(), binding: this.binding, elapsed: this.elapsed };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.binding = s.binding;
+    this.elapsed = s.elapsed;
+  }
+
   get coverTray() { return this.inputs[0].tray; }
   get gutsTray() { return this.inputs[1].tray; }
 
@@ -319,6 +338,15 @@ class Finisher extends BookBinder {
     this.gutsLeft = 0; // guts sheets left on the roll that's loaded
   }
 
+  saveState() {
+    return { ...super.saveState(), gutsLeft: this.gutsLeft };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.gutsLeft = s.gutsLeft;
+  }
+
   hasGuts() {
     return this.gutsLeft >= GUTS_PER_BOOK || this.gutsTray.count > 0;
   }
@@ -374,6 +402,17 @@ class Palletizer extends Machine {
     this.elapsed = 0;
   }
 
+  saveState() {
+    return { ...super.saveState(), wrapping: this.wrapping, making: this.making, elapsed: this.elapsed };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.wrapping = s.wrapping;
+    this.making = s.making;
+    this.elapsed = s.elapsed;
+  }
+
   progress() {
     if (!this.wrapping) return null;
     return Math.min(1, this.elapsed / PALLET_WRAP_SECONDS);
@@ -422,6 +461,17 @@ class TruckDock extends Machine {
     this.cargo = []; // pallets on the truck; a truck can carry mixed kinds
     this.away = 0; // seconds left on the delivery trip, 0 = docked
     this.trips = 0;
+  }
+
+  saveState() {
+    return { ...super.saveState(), cargo: [...this.cargo], away: this.away, trips: this.trips };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.cargo = [...s.cargo];
+    this.away = s.away;
+    this.trips = s.trips;
   }
 
   get loaded() {

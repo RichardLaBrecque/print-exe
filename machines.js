@@ -73,6 +73,17 @@ class Tray {
     this.lastServed = ""; // key of the belt served last, so belts take turns
   }
 
+  // Save and load: only what changes during play.
+  saveState() {
+    return { item: this.item, count: this.count, lastServed: this.lastServed };
+  }
+
+  loadState(s) {
+    this.item = s.item;
+    this.count = s.count;
+    this.lastServed = s.lastServed;
+  }
+
   accepts(hand) {
     if (hand === HAND.EMPTY) return false;
     if (this.kinds) {
@@ -221,6 +232,25 @@ class Machine {
   canActivate(_game) { return false; }
   activate(_game) {}
   bodyHint(_game) { return "Runs on its own."; }
+
+  // Save and load. Subclasses add their own fields on top. `type` is the class name,
+  // which save.js maps back to a constructor.
+  saveState() {
+    return {
+      type: this.constructor.name,
+      col: this.col,
+      row: this.row,
+      trays: this.allTrays().map((tray) => tray.saveState()),
+    };
+  }
+
+  loadState(s) {
+    this.allTrays().forEach((tray, i) => tray.loadState(s.trays[i]));
+  }
+
+  allTrays() {
+    return [...this.inputs.map((input) => input.tray), ...(this.outTray ? [this.outTray] : [])];
+  }
 
   // Upgrades. Machines that can be upgraded override these.
   upgradeCost() { return null; } // price of the next upgrade, or null if none left
@@ -495,6 +525,26 @@ class Supply extends Machine {
     this.autoReorder = false;
   }
 
+  saveState() {
+    return {
+      ...super.saveState(),
+      pending: this.pending,
+      incoming: this.incoming,
+      autoReorder: this.autoReorder,
+      chuteDir: this.chuteDir,
+      chuteTimer: this.chuteTimer,
+    };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.pending = s.pending;
+    this.incoming = s.incoming;
+    this.autoReorder = s.autoReorder;
+    this.chuteDir = s.chuteDir;
+    this.chuteTimer = s.chuteTimer;
+  }
+
   hasRoomForDelivery() {
     return this.inTray.count + this.delivery.amount <= this.inTray.capacity;
   }
@@ -666,6 +716,17 @@ class Converter extends Machine {
     this.elapsed = 0;
   }
 
+  saveState() {
+    return { ...super.saveState(), working: this.working, making: this.making, elapsed: this.elapsed };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.working = s.working;
+    this.making = s.making;
+    this.elapsed = s.elapsed;
+  }
+
   // What a job on this input makes. Machines with several job types override it.
   outputFor(_input) {
     return this.output;
@@ -769,6 +830,18 @@ class ManualStapler extends Machine {
     this.elapsed = 0; // auto-staple timer
   }
 
+  saveState() {
+    return { ...super.saveState(), level: this.level, elapsed: this.elapsed };
+  }
+
+  // upgrade() also sets the Auto Stapler's title, upkeep and description
+  loadState(s) {
+    super.loadState(s);
+    if (s.level === 1) this.upgrade();
+    this.elapsed = s.elapsed;
+  }
+
+  // Tapping the body still staples instantly, even once automated.
   canActivate() { return this.inTray.count > 0 && !this.outTray.isFull(); }
 
   activate() {
@@ -846,6 +919,16 @@ class Outbox extends Machine {
     });
     this.shipped = 0;
     this.elapsed = 0;
+  }
+
+  saveState() {
+    return { ...super.saveState(), shipped: this.shipped, elapsed: this.elapsed };
+  }
+
+  loadState(s) {
+    super.loadState(s);
+    this.shipped = s.shipped;
+    this.elapsed = s.elapsed;
   }
 
   bodyHint() { return `Ships Zines for $${ZINE_PRICE} each. Shipped: ${this.shipped}`; }

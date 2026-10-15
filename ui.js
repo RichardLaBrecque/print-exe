@@ -32,13 +32,14 @@ function setText(el, text) {
 }
 
 const UI = {
-  init({ onTool, onBuy, onFit }) {
+  init({ onTool, onBuy, onFit, onNewShop, onSaveFile, onOpenFile }) {
     this.shopEl = document.getElementById("shop");
     this.helpEl = document.getElementById("help");
     this.buyButtons = this.buildShop(onBuy);
     document.getElementById("shop-close").addEventListener("click", () => this.toggleWindow(this.shopEl));
 
     this.initStartMenu(onTool, onFit);
+    this.initFileMenu({ onNewShop, onSaveFile, onOpenFile });
 
     this.cashEl = document.getElementById("cash");
     this.holdingEl = document.querySelector("#holding span");
@@ -140,6 +141,44 @@ const UI = {
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this.setMenuOpen(false);
     });
+  },
+
+  // Start menu: Save to File, Open Save File, New Shop.
+  initFileMenu({ onNewShop, onSaveFile, onOpenFile }) {
+    const item = (action) => this.menuEl.querySelector(`[data-action="${action}"]`);
+    const picker = document.getElementById("open-file");
+
+    item("save-file").addEventListener("click", () => {
+      this.setMenuOpen(false);
+      onSaveFile();
+    });
+
+    item("open-file").addEventListener("click", () => {
+      this.setMenuOpen(false);
+      picker.value = ""; // so picking the same file again still fires
+      picker.click();
+    });
+    picker.addEventListener("change", async () => {
+      const file = picker.files[0];
+      if (!file) return;
+      try {
+        await onOpenFile(file);
+      } catch {
+        this.showDialog("Can't open save", `${file.name} isn't a Print95 save file this version can read.`);
+      }
+    });
+
+    item("new-shop").addEventListener("click", () => {
+      this.setMenuOpen(false);
+      const sure = window.confirm("Start a new shop? This one is lost unless you Save to File first.");
+      if (sure) onNewShop();
+    });
+  },
+
+  // After loading an autosave: skip the Readme and say so.
+  welcomeBack() {
+    this.helpEl.hidden = true;
+    this.showDialog("Welcome back", "Your shop was saved in this browser and picked up where you left off.");
   },
 
   setMenuOpen(open) {

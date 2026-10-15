@@ -437,6 +437,8 @@
 
   <div id="tooltip" role="tooltip" hidden><b id="tooltip-title"></b><span id="tooltip-text"></span></div>
 
+  <input id="open-file" type="file" accept=".json,application/json" hidden>
+
   <div id="bsod" hidden>
     <div class="bsod-box">
       <p class="bsod-title"><span>Print95</span></p>
@@ -493,6 +495,7 @@
           <li>Pinch or scroll to zoom. Press F to see the whole floor.</li>
           <li>Start menu: belts, splitters, bridges, the Shop and the Ledger.</li>
           <li>Right-click goes back to Select.</li>
+          <li>Your shop saves itself in this browser. The Start menu can also save it to a file.</li>
         </ul>
         <p><b>Grow:</b> automate with belts, buy licenses for roll paper and production
           equipment, then run rolls through presses, sheeters and binders to pallets and trucks.</p>
@@ -538,6 +541,10 @@
         <li><button type="button" data-open="help"><span class="check"></span>How to Play...</button></li>
         <li class="sep" role="separator"></li>
         <li><button type="button" data-action="fit"><span class="check"></span>View Whole Floor<span class="key">F</span></button></li>
+        <li class="sep" role="separator"></li>
+        <li><button type="button" data-action="save-file"><span class="check"></span>Save to File...</button></li>
+        <li><button type="button" data-action="open-file"><span class="check"></span>Open Save File...</button></li>
+        <li><button type="button" data-action="new-shop"><span class="check"></span>New Shop...</button></li>
       </ul>
     </div>
 
@@ -558,6 +565,7 @@
   <script src="production.js"></script>
   <script src="belts.js"></script>
   <script src="catalog.js"></script>
+  <script src="save.js"></script>
   <script src="ui.js"></script>
   <script src="game.js"></script>
 </body>

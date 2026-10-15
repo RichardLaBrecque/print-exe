@@ -1,0 +1,182 @@
+// Saving and loading. The shop autosaves to this browser's localStorage, and can be
+// downloaded or opened as a .json save file. Machines and belts save their own state
+// (saveState / loadState); this file handles the game as a whole.
+//
+// Browser storage can be missing or blocked (private windows, previews), so every
+// access is wrapped: the game still runs, it just won't remember.
+
+const SAVE_KEY = "print95.save";
+const SAVE_VERSION = 1;
+const AUTOSAVE_SECONDS = 10;
+
+// Class names in a save file, back to the constructors. Written out so a save can only
+// ever build these classes.
+const MACHINE_TYPES = {
+  PaperSupply: (at) => new PaperSupply(at),
+  DesktopPrinter: (at) => new DesktopPrinter(at),
+  ManualStapler: (at) => new ManualStapler(at),
+  Outbox: (at) => new Outbox(at),
+  TrashCan: (at) => new TrashCan(at),
+  PaperRollRack: (at) => new PaperRollRack(at),
+  RollPress: (at) => new RollPress(at),
+  Sheeter: (at) => new Sheeter(at),
+  SaddleStitcher: (at) => new SaddleStitcher(at),
+  PerfectBinder: (at) => new PerfectBinder(at),
+  Finisher: (at) => new Finisher(at),
+  Palletizer: (at) => new Palletizer(at),
+  TruckDock: (at) => new TruckDock(at),
+};
+
+const BELT_TYPES = {
+  Belt: (s) => new Belt(s.col, s.row, s.dir),
+  ExpressBelt: (s) => new ExpressBelt(s.col, s.row, s.dir),
+  Splitter: (s) => new Splitter(s.col, s.row, s.dir),
+  Bridge: (s) => new Bridge(s.col, s.row),
+};
+
+const Save = {
+  // Everything needed to rebuild the shop, as plain JSON-ready data.
+  snapshot(game) {
+    // A machine or belt mid-drag is saved where it was picked up from
+    const machines = game.machines.map((m) => {
+      const state = m.saveState();
+      if (game.moving?.machine === m) Object.assign(state, game.moving.from);
+      return state;
+    });
+    const belts = [...game.belts.values()].map((piece) => piece.saveState());
+    if (game.movingBelt) belts.push({ ...game.movingBelt.piece.saveState(), ...game.movingBelt.from });
+
+    return {
+      version: SAVE_VERSION,
+      savedAt: new Date().toISOString(),
+      cash: game.cash,
+      hand: game.hand,
+      time: game.time,
+      floor: { ...game.floor },
+      licenses: [...game.licenses],
+      nextBillIn: game.nextBillIn,
+      graceLeft: game.graceLeft,
+      peakIncome: game.peakIncome,
+      beltDir: game.beltDir,
+      ledger: {
+        ...game.ledger,
+        entries: game.ledger.entries.map((entry) => ({ ...entry, at: entry.at.toISOString() })),
+      },
+      camera: { x: Camera.x, y: Camera.y, zoom: Camera.zoom },
+      machines,
+      belts,
+    };
+  },
+
+  // Rebuild the shop from a snapshot. Throws if the data isn't a save this version understands.
+  restore(game, data) {
+    if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
+
+    const machines = data.machines.map((s) => {
+      const build = MACHINE_TYPES[s.type];
+      if (!build) throw new Error(`Unknown machine in save: ${s.type}`);
+      const machine = build({ col: s.col, row: s.row });
+      machine.loadState(s);
+      return machine;
+    });
+    const belts = new Map();
+    for (const s of data.belts) {
+      const build = BELT_TYPES[s.type];
+      if (!build) throw new Error(`Unknown belt in save: ${s.type}`);
+      const piece = build(s);
+      piece.loadState(s);
+      belts.set(tileKey(s.col, s.row), piece);
+    }
+
+    game.cash = data.cash;
+    game.hand = data.hand;
+    game.time = data.time;
+    game.floor = { ...data.floor };
+    game.licenses = new Set(data.licenses);
+    game.nextBillIn = data.nextBillIn;
+    game.graceLeft = data.graceLeft;
+    game.peakIncome = data.peakIncome;
+    game.beltDir = data.beltDir;
+    game.ledger = {
+      ...data.ledger,
+      entries: data.ledger.entries.map((entry) => ({ ...entry, at: new Date(entry.at) })),
+    };
+    game.machines = machines;
+    game.belts = belts;
+
+    Camera.x = data.camera.x;
+    Camera.y = data.camera.y;
+    Camera.zoom = data.camera.zoom;
+    Camera.fitted = true; // keep the saved view instead of fitting the floor
+  },
+
+  // Autosave ------------------------------------------------------------------------------
+
+  write(game) {
+    if (game.bankrupt) return;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(this.snapshot(game)));
+    } catch {
+      // Storage blocked or full; the shop just won't be remembered
+    }
+  },
+
+  // Load the autosave if there is one. Returns true if the shop was restored.
+  read(game) {
+    let text = null;
+    try {
+      text = localStorage.getItem(SAVE_KEY);
+    } catch {
+      return false;
+    }
+    if (!text) return false;
+    try {
+      this.restore(game, JSON.parse(text));
+      return true;
+    } catch {
+      return false; // a broken or old save: start a new shop instead
+    }
+  },
+
+  clear() {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      // Nothing to clear
+    }
+  },
+
+  // Save every few seconds and whenever the page is hidden or closed.
+  startAutosave(game) {
+    setInterval(() => this.write(game), AUTOSAVE_SECONDS * 1000);
+    window.addEventListener("pagehide", () => this.write(game));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") this.write(game);
+    });
+  },
+
+  // Save files ------------------------------------------------------------------------------
+
+  download(game) {
+    const blob = new Blob([JSON.stringify(this.snapshot(game), null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `print95-save-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+
+  // Check a chosen file is a real save, make it the autosave, and reload into it.
+  async open(file, game) {
+    const data = JSON.parse(await file.text());
+    this.restore({ ...game, ledger: {}, licenses: new Set() }, data); // throws if it isn't a usable save
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    location.reload();
+  },
+
+  // Forget the autosave and start fresh.
+  newShop() {
+    this.clear();
+    location.reload();
+  },
+};
