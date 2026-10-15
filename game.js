@@ -294,10 +294,27 @@ const Game = {
 
   // Direction for a new piece at (col, row): if a machine's OUT tray is next to it, face away
   // from the tray so the piece pulls from it straight away. Otherwise the last direction used.
+  // In front of a chute, carry on the way the chute points.
   placementDir(col, row) {
+    const chute = this.machines.find((m) => {
+      if (m.chuteDir == null) return false;
+      const target = m.chuteTarget();
+      return target.col === col && target.row === row;
+    });
+    if (chute) return chute.chuteDir;
+
     const order = [this.beltDir, ...[0, 1, 2, 3].filter((dir) => dir !== this.beltDir)];
-    const away = order.find((dir) => this.trayAt(col - DIRS[dir].x, row - DIRS[dir].y, "out"));
+    const away = order.find((dir) => this.trayAt(col - DIRS[dir].x, row - DIRS[dir].y, "out")?.pullable);
     return away ?? this.beltDir;
+  },
+
+  // The machine whose chute is on this square, if any.
+  chuteAt(col, row) {
+    return this.machines.find((m) => {
+      if (m.chuteDir == null) return false;
+      const tile = m.chuteTile();
+      return tile.col === col && tile.row === row;
+    });
   },
 
   // Splitter tool tap: rotate a splitter, swap a belt for one, or place one on an empty square.
@@ -561,7 +578,9 @@ const Game = {
 
     const { col, row } = this.tileAt(wx, wy);
     if (this.tool === "belt" || this.tool === "express") {
-      this.tapBelt(col, row, wx, wy);
+      const chuteOwner = this.chuteAt(col, row);
+      if (chuteOwner) chuteOwner.rotateChute();
+      else this.tapBelt(col, row, wx, wy);
       return;
     }
     if (this.tool === "splitter") {

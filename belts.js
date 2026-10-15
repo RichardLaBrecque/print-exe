@@ -205,7 +205,7 @@ function moveItems(game) {
   for (const belt of lanes) {
     if (belt.item !== null || !belt.pullsFromTrays) continue;
     const tray = game.trayAt(belt.behind.col, belt.behind.row, "out");
-    if (tray) enqueue(tray, belt, () => belt.takeFrom(tray));
+    if (tray?.pullable) enqueue(tray, belt, () => belt.takeFrom(tray));
   }
   for (const [target, waiting] of queues) takeTurns(target, waiting);
 }

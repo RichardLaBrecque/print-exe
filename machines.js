@@ -63,11 +63,12 @@ const INK = "#4a4f5c";
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
 class Tray {
-  constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false }) {
+  constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false, pullable = true }) {
     this.item = item; // the kind held now; null when it takes anything or a multi-kind tray is empty
     this.kinds = kinds;
     this.capacity = capacity;
     this.endless = endless; // never fills up or runs out
+    this.pullable = pullable; // false when the machine pushes items out itself (the Paper Supply's chute)
     this.count = 0;
     this.lastServed = ""; // key of the belt served last, so belts take turns
   }
@@ -298,17 +299,22 @@ class Machine {
     ctx.strokeStyle = "#b8b8c4";
     ctx.stroke();
 
-    ctx.font = Draw.font(9, true);
+    // Short slots (one-tile-tall machines) drop the label so the icon and count still fit
+    const compact = sh < 40;
     ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = INK;
-    ctx.fillText(label, sx + sw / 2, sy + 3);
+    if (!compact) {
+      ctx.font = Draw.font(9, true);
+      ctx.textBaseline = "top";
+      ctx.fillStyle = INK;
+      ctx.fillText(label, sx + sw / 2, sy + 3);
+    }
 
     // Contents
     // Icon fits between the label (top 12) and the count (bottom 12), so short slots stay readable
-    const s = Math.min(sw * 0.55, sh - 24);
+    const top = compact ? 2 : 12;
+    const s = Math.min(sw * 0.55, sh - top - 12);
     const cx = sx + sw / 2;
-    const cy = sy + 12 + (sh - 24) / 2;
+    const cy = sy + top + (sh - top - 12) / 2;
     ctx.lineWidth = 2;
     if (tray.shownItem === null) {
       this.drawIcon(ctx, cx - s / 2, cy - s / 2, s);
@@ -344,9 +350,12 @@ class Machine {
   }
 
   drawBody(ctx, r) {
-    const s = Math.min(r.w, r.h) * 0.5;
-    ctx.lineWidth = 2;
-    this.drawIcon(ctx, r.x + r.w / 2 - s / 2, r.y + r.h / 2 - s / 2 + 3, s);
+    // A one-tile-tall body only has room for its label and progress bar
+    if (r.h >= TILE * 2) {
+      const s = Math.min(r.w, r.h) * 0.5;
+      ctx.lineWidth = 2;
+      this.drawIcon(ctx, r.x + r.w / 2 - s / 2, r.y + r.h / 2 - s / 2 + 3, s);
+    }
 
     const bar = this.progress();
     if (bar !== null) {
@@ -468,11 +477,16 @@ function drawItem(ctx, item, x, y, s) {
 // Holds a stock of paper that you pay to restock. Tap the body to order a delivery;
 // a truck drops it off after a short wait. The IN and OUT trays are the same stock,
 // so you can put paper back. One upgrade adds auto-reorder.
+//
+// With `chute: true` the OUT tray is a one-tile chute instead: belts can't pull from it, and
+// it pushes one item a second onto the single square its arrow points at.
 class Supply extends Machine {
-  constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, ...rest }) {
-    const stock = new Tray({ item, capacity });
+  constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, rows = 2, chute = false, ...rest }) {
+    const stock = new Tray({ item, capacity, pullable: !chute });
     stock.count = startStock;
-    super(title, { ...rest, cols: 3, rows: 2, inTray: stock, outTray: stock });
+    super(title, { ...rest, cols: 3, rows, inTray: stock, outTray: stock });
+    this.chuteDir = chute ? 0 : null; // index into DIRS; starts pointing right
+    this.chuteTimer = 0; // 0..1, pushes an item each time it reaches 1
     this.delivery = delivery; // { amount, price, seconds }
     this.reorderCost = reorderCost;
     this.sample = sample; // free sheets sent when you're broke and out of paper, so you can't get stuck
@@ -527,8 +541,46 @@ class Supply extends Machine {
     return 1 - this.pending / this.delivery.seconds;
   }
 
+  // The chute's square on the machine (top right) and the square it feeds.
+  chuteTile() {
+    return { col: this.col + this.cols - 1, row: this.row };
+  }
+
+  chuteTarget() {
+    const from = this.chuteTile();
+    const d = DIRS[this.chuteDir];
+    return { col: from.col + d.x, row: from.row + d.y };
+  }
+
+  // Right, down, up: never back into the machine.
+  rotateChute() {
+    const turns = [0, 1, 3];
+    this.chuteDir = turns[(turns.indexOf(this.chuteDir) + 1) % turns.length];
+  }
+
+  // Hand one item to the belt or IN tray in front of the chute. Returns true if it went.
+  pushOut(game) {
+    const from = this.chuteTile();
+    const { col, row } = this.chuteTarget();
+    const piece = game.beltAt(col, row);
+    if (piece) {
+      const lane = piece.receiverFrom(from.col, from.row);
+      if (!lane || lane.item !== null) return false;
+      lane.receive(this.outTray.take(), 0, from);
+      return true;
+    }
+    const tray = game.trayAt(col, row, "in");
+    if (!tray || !tray.accepts(this.outTray.item)) return false;
+    tray.put(this.outTray.take());
+    return true;
+  }
+
   update(dt, game) {
     super.update(dt, game);
+    if (this.chuteDir !== null) {
+      this.chuteTimer = Math.min(1, this.chuteTimer + dt * BELT_SPEED);
+      if (this.chuteTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.chuteTimer = 0;
+    }
     if (this.pending > 0) {
       this.pending = Math.max(0, this.pending - dt);
       if (this.pending === 0) this.inTray.count = Math.min(this.inTray.capacity, this.inTray.count + this.incoming);
@@ -544,6 +596,27 @@ class Supply extends Machine {
     this.drawBodyLabel(ctx, r, label, INK);
   }
 
+  // An arrow on the chute's outer edge, pointing where it feeds.
+  draw(ctx, game) {
+    super.draw(ctx, game);
+    if (this.chuteDir === null) return;
+    const { col, row } = this.chuteTile();
+    ctx.save();
+    ctx.translate(col * TILE + TILE / 2, row * TILE + TILE / 2);
+    ctx.rotate((this.chuteDir * Math.PI) / 2);
+    ctx.beginPath();
+    ctx.moveTo(TILE / 2 - 2, 0);
+    ctx.lineTo(TILE / 2 - 14, -10);
+    ctx.lineTo(TILE / 2 - 14, 10);
+    ctx.closePath();
+    ctx.fillStyle = this.accent;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // A stack of whatever this supply holds.
   drawIcon(ctx, x, y, s) {
     ctx.lineWidth = 2;
@@ -555,7 +628,8 @@ class Supply extends Machine {
 class PaperSupply extends Supply {
   constructor(at) {
     super("Paper Supply", {
-      description: "Holds Blank Sheets. Tap the middle to order 20 more for $40.",
+      description: "Pushes a Blank Sheet a second out of its chute onto one square. " +
+        "Turn the chute with the Belt tool; tap the middle to order 20 more for $40.",
       upkeep: 0,
       ...at,
       accent: "#5fb3d9",
@@ -565,6 +639,8 @@ class PaperSupply extends Supply {
       delivery: { amount: 20, price: 40, seconds: 3 }, // $2 a sheet
       reorderCost: 100,
       sample: 5,
+      rows: 1,
+      chute: true,
     });
   }
 }
@@ -693,7 +769,6 @@ class ManualStapler extends Machine {
     this.elapsed = 0; // auto-staple timer
   }
 
-  // Tapping the body still staples instantly, even once automated.
   canActivate() { return this.inTray.count > 0 && !this.outTray.isFull(); }
 
   activate() {
