@@ -16,6 +16,10 @@
 //   Perfect Binder (1/s): 1 Guts Roll Press + Sheeter (2 guts/s) and 1 Sheet-Fed Cover press.
 //   Finisher (2/s): 2 Guts Roll Presses (a roll every 2.5 s between them) and 2 covers/s.
 // Rolls can't be carried by hand (see canCarry), so tier 2 runs on belts.
+//
+// Production machines have IN and OUT triangles like desktop ones (see Machine). Their OUT
+// triangles push at Express Belt speed, since the Sheeter, Saddle Stitcher and Finisher make
+// 2 items a second; the binders get one IN triangle each for COVER and GUTS.
 
 const ROLL_PRESS_SECONDS = 5;
 const SHEET_PRESS_SECONDS = 1;
@@ -57,6 +61,7 @@ class PaperRollRack extends Supply {
       description: `Holds Blank Rolls. Tap the middle to order 10 rolls (${10 * SHEETS_PER_ROLL} sheets of paper) for $150.`,
       upkeep: 10,
       ...at,
+      chute: true,
       accent: "#c9b98f",
       item: HAND.BLANK_ROLL,
       capacity: 30,
@@ -117,6 +122,9 @@ class RollPress extends Press {
       ...at,
       cols: 4,
       rows: 3,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#5b8def",
       input: HAND.BLANK_ROLL,
       jobs: JOBS,
@@ -157,6 +165,9 @@ class SheetFedPress extends Press {
       ...at,
       cols: 4,
       rows: 2,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#7e57c2",
       input: HAND.BLANK_SHEET,
       jobs: [JOBS[0], JOBS[1]],
@@ -196,6 +207,9 @@ class Sheeter extends Converter {
       ...at,
       cols: 3,
       rows: 2,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#3fb8a8",
       input: [HAND.BLANK_ROLL, ...PRINTED_ROLLS],
       output: [HAND.BLANK_SHEET, ...PRINTED_SHEETS],
@@ -237,6 +251,9 @@ class SaddleStitcher extends Converter {
       ...at,
       cols: 3,
       rows: 2,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#e5703a",
       input: HAND.SADDLE_SHEET,
       output: HAND.ZINE,
@@ -358,6 +375,9 @@ class PerfectBinder extends ZineBinder {
       ...at,
       cols: 4,
       rows: 2,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#e5703a",
       seconds: BIND_SECONDS,
       gutsTray: new Tray({ item: HAND.GUTS_SHEET, capacity: PRODUCTION_TRAY_SIZE * 2 }),
@@ -385,6 +405,9 @@ class Finisher extends ZineBinder {
       ...at,
       cols: 4,
       rows: 3,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#c2185b",
       seconds: FINISH_SECONDS,
       gutsTray: new Tray({ item: HAND.GUTS_ROLL, capacity: 3 }),
@@ -447,6 +470,9 @@ class Palletizer extends Machine {
       ...at,
       cols: 3,
       rows: 2,
+      portIn: true,
+      portOut: true,
+      portRate: EXPRESS_SPEED,
       accent: "#a0784a",
       inTray: new Tray({ kinds: PALLETS.map((p) => p.zine), capacity: ZINES_PER_PALLET * 2 }),
       outTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 3 }),
@@ -510,6 +536,7 @@ class TruckDock extends Machine {
       wallOnly: true,
       cols: 3,
       rows: 3,
+      portIn: true,
       accent: "#6b7080",
       inTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 4 }),
     });

@@ -625,7 +625,7 @@ const Game = {
   // Turn any port that faces off the floor (into a wall) to the next edge that faces the floor.
   turnPortsInward(machine) {
     for (const port of machine.ports) {
-      for (let i = 0; i < machine.portEdges(port.kind).length; i++) {
+      for (let i = 0; i < machine.edgesFor(port).length; i++) {
         const outside = machine.portOutside(port);
         if (this.inFloor(outside.col, outside.row)) break;
         machine.rotatePort(port);

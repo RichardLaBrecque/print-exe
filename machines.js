@@ -131,15 +131,17 @@ class Machine {
   // down the first column, one share of the rows each, so a belt feeds whichever it points at.
   //
   // `portIn` / `portOut` give the IN or OUT tray a single port instead: one edge of the tray
-  // column, marked with a triangle. An IN port only takes items from the square it faces; an
-  // OUT port pushes an item a second onto the square it faces, and belts can't pull from it.
-  // Hands still use the whole tray. Turn a port with the Belt tool.
+  // column, marked with a triangle. With several inputs, each gets its own IN port, which stays
+  // beside that input's rows. An IN port only takes items from the square it faces; an OUT port
+  // pushes up to `portRate` items a second onto the square it faces, and belts can't pull from
+  // it. Hands still use the whole tray. Turn a port with the Belt tool.
   //
   // `wallOnly` machines (Outbox, Truck Dock and the paper supplies) take deliveries in or ship
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "",
-    inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, wallOnly = false,
+    inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, portRate = BELT_SPEED,
+    wallOnly = false,
   }) {
     this.title = title;
     this.description = description; // one or two sentences for the hover tooltip
@@ -154,10 +156,11 @@ class Machine {
     this.outTray = outTray;
     // { kind: "in" | "out", row, dir }: row offset in that tray column, facing DIRS[dir]
     this.ports = [
-      ...(portIn ? [{ kind: "in", ...this.portEdges("in")[0] }] : []),
+      ...(portIn ? this.inputs.map((_input, i) => ({ kind: "in", ...this.inputEdges(i)[0] })) : []),
       ...(portOut ? [{ kind: "out", ...this.portEdges("out")[0] }] : []),
     ];
     if (portOut) outTray.pullable = false;
+    this.portRate = portRate;
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.shake = 0;
   }
@@ -268,10 +271,11 @@ class Machine {
   }
 
   // Saves from before ports keep each machine's default ports; saves from the one-port
-  // version stored them as inPort and outPort.
+  // version stored them as inPort and outPort. Production machines were saved with no ports
+  // before they had them, so an empty list also keeps the defaults.
   loadState(s) {
     this.allTrays().forEach((tray, i) => tray.loadState(s.trays[i]));
-    if (s.ports) {
+    if (s.ports?.length > 0) {
       this.ports = s.ports.map((port) => ({ ...port }));
     } else {
       if (s.inPort && this.inPort) Object.assign(this.inPort, s.inPort);
@@ -295,7 +299,7 @@ class Machine {
   update(dt, game) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
     if (this.outPort) {
-      this.portTimer = Math.min(1, this.portTimer + dt * BELT_SPEED);
+      this.portTimer = Math.min(1, this.portTimer + dt * this.portRate);
       if (this.portTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.portTimer = 0;
     }
   }
@@ -313,6 +317,22 @@ class Machine {
       if (row === this.rows - 1) edges.push({ row, dir: 1 });
     }
     return edges;
+  }
+
+  // Which input the tray column's row belongs to, matching how partRect splits the rows.
+  inputAtRow(row) {
+    const share = Math.floor(this.rows / this.inputs.length);
+    return Math.min(Math.floor(row / share), this.inputs.length - 1);
+  }
+
+  // The IN column's edges beside one input's rows.
+  inputEdges(i) {
+    return this.portEdges("in").filter((e) => this.inputAtRow(e.row) === i);
+  }
+
+  // The edges a port can turn through: an IN port stays beside its own input.
+  edgesFor(port) {
+    return port.kind === "in" ? this.inputEdges(this.inputAtRow(port.row)) : this.portEdges("out");
   }
 
   // The first IN or OUT port; most machines have at most one of each.
@@ -350,7 +370,7 @@ class Machine {
 
   // Move the port to the next edge of its column, skipping edges another port is on.
   rotatePort(port) {
-    const edges = this.portEdges(port.kind);
+    const edges = this.edgesFor(port);
     const free = this.freeEdges(port.kind, port);
     const start = edges.findIndex((e) => e.row === port.row && e.dir === port.dir);
     for (let i = 1; i <= edges.length; i++) {
@@ -370,7 +390,8 @@ class Machine {
     const kind = part?.startsWith("in:") ? "in" : part === "out" ? "out" : null;
     if (!kind) return null;
     const column = this.ports.filter((p) => p.kind === kind);
-    return column.find((p) => this.row + p.row === row) ?? column[0] ?? null;
+    const sameInput = (p) => kind === "in" && this.inputAtRow(p.row) === this.inputAtRow(row - this.row);
+    return column.find((p) => this.row + p.row === row) ?? column.find(sameInput) ?? column[0] ?? null;
   }
 
   // IN ports take items only from the square they face; other machines take from anywhere.
