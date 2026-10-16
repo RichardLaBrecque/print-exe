@@ -580,13 +580,17 @@ class TruckDock extends Machine {
       this.trips += 1;
       const pay = this.cargo.reduce((sum, pallet) => sum + palletValue(pallet), 0);
       game.earn(pay, `Truck delivered ${this.loaded} pallets`);
+      game.sellZines(this.loaded * ZINES_PER_PALLET);
       const { x, y, w } = this.rect;
       game.floatText(`+${money(pay)}`, x + w / 2, y);
       this.cargo = [];
     }
 
     while (this.loaded < PALLETS_PER_TRUCK && this.inTray.count > 0) this.cargo.push(this.inTray.take());
-    if (this.loaded === PALLETS_PER_TRUCK) this.away = TRUCK_TRIP_SECONDS;
+    if (this.loaded === PALLETS_PER_TRUCK) {
+      this.away = TRUCK_TRIP_SECONDS;
+      game.truckLeft();
+    }
   }
 
   drawIcon(ctx, x, y, s) {

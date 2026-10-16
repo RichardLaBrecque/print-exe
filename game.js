@@ -14,6 +14,11 @@ const GRACE_SECONDS = 60;
 const BELTS_UNLOCK_ZINES = 20;
 const PORT_HIGHLIGHT_SECONDS = 15; // how long ports pulse after belts unlock
 const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
+// Scorecard records: game time each was first reached, null until then. Saves from before
+// records were kept mark ones they had already reached as MILESTONE_UNKNOWN.
+const MILESTONE_UNKNOWN = -1;
+const ZINE_RATE_SECONDS = 60; // Zines/s is averaged over this window, like income
+
 const EXPAND_STEP = 2; // rows or columns added per expansion
 const TILE_PRICE = 3; // cost of each new floor square
 
@@ -101,6 +106,10 @@ const Game = {
   bankrupt: false,
   peakIncome: 0, // best income per second seen, for the bankruptcy screen
   zinesSold: 0,
+  firstTruck: null, // the scorecard() numbers from when the first full truck left: the soft win
+  milestones: { production: null, profit10k: null, profit100k: null },
+  zineSales: [], // { time, count } for the last ZINE_RATE_SECONDS, from Outboxes and trucks
+  bestZinesPerSecond: 0,
   beltsUnlocked: false,
   portHighlightUntil: 0, // game time until which ports pulse to show where belts connect
   floor: { cols: 8, rows: 10 },
@@ -713,6 +722,68 @@ const Game = {
     return this.earnedInLast(60) / 60;
   },
 
+  // Outboxes sell one Zine at a time; a truck sells every zine on its pallets at once.
+  sellZines(count) {
+    this.zineSales.push({ time: this.time, count });
+  },
+
+  zinesPerSecond() {
+    const recent = this.zineSales.filter((sale) => sale.time >= this.time - ZINE_RATE_SECONDS);
+    return recent.reduce((sum, sale) => sum + sale.count, 0) / ZINE_RATE_SECONDS;
+  },
+
+  // Earned less spent since the shop opened, which started with $0.
+  totalProfit() {
+    return this.ledger.totalEarned - this.ledger.totalSpent;
+  },
+
+  // Stamp each record the first time it's reached, and keep the best Zines/s.
+  updateRecords() {
+    this.zineSales = this.zineSales.filter((sale) => sale.time >= this.time - ZINE_RATE_SECONDS);
+    this.bestZinesPerSecond = Math.max(this.bestZinesPerSecond, this.zinesPerSecond());
+
+    const { milestones } = this;
+    const profit = this.totalProfit();
+    if (milestones.production === null && this.licenses.has("production")) milestones.production = this.time;
+    if (milestones.profit10k === null && profit >= 10_000) milestones.profit10k = this.time;
+    if (milestones.profit100k === null && profit >= 100_000) milestones.profit100k = this.time;
+  },
+
+  // Sales over the last minute less rent and upkeep, per second. Negative when losing money.
+  profitPerSecond() {
+    return this.incomePerSecond() - this.billPerMinute() / 60;
+  },
+
+  // Squares covered by a machine or a belt piece, counting one being dragged.
+  usedSquares() {
+    const machineSquares = this.machines.reduce((sum, m) => sum + m.cols * m.rows, 0);
+    return machineSquares + this.belts.size + (this.movingBelt ? 1 : 0);
+  },
+
+  // The numbers players can compare and aim for, each a separate target. The floor usage
+  // ratio is profit per minute for each floor square, times the share of the floor in use,
+  // so it goes up by earning more from the same floor and by leaving less of it empty.
+  scorecard() {
+    const squares = this.floor.cols * this.floor.rows;
+    const used = this.usedSquares();
+    const profit = this.profitPerSecond();
+    return {
+      time: this.time,
+      profit,
+      zinesPerSecond: this.zinesPerSecond(),
+      cols: this.floor.cols,
+      rows: this.floor.rows,
+      used,
+      ratio: ((profit * 60) / squares) * (used / squares),
+    };
+  },
+
+  // A Truck Dock calls this when a full truck drives off. The first one is the soft win;
+  // the shop keeps running after it.
+  truckLeft() {
+    if (this.firstTruck === null) this.firstTruck = this.scorecard();
+  },
+
   payBills() {
     const bill = this.billPerMinute();
     this.spend(bill, "Rent & upkeep");
@@ -747,6 +818,7 @@ const Game = {
     for (const b of this.belts.values()) b.update(dt);
     moveItems(this);
     this.updateFinances(dt);
+    this.updateRecords();
     if (!this.beltsUnlocked && this.zinesSold >= BELTS_UNLOCK_ZINES) this.unlockBelts();
     for (const f of this.floaters) f.age += dt;
     this.floaters = this.floaters.filter((f) => f.age < (f.kind === "tip" ? 1.6 : 1));

@@ -42,6 +42,18 @@ const OLD_ITEM_NAMES = {
   "Perfect-Bound Book": HAND.PERFECT_ZINE,
 };
 
+// Saves from before Scorecard records: anything already reached gets MILESTONE_UNKNOWN,
+// since when it happened wasn't kept. The rest are stamped as they're reached.
+function oldSaveMilestones(data) {
+  const profit = data.ledger.totalEarned - data.ledger.totalSpent;
+  const reached = (done) => (done ? MILESTONE_UNKNOWN : null);
+  return {
+    production: reached(data.licenses.includes("production")),
+    profit10k: reached(profit >= 10_000),
+    profit100k: reached(profit >= 100_000),
+  };
+}
+
 function renameOldItems(data) {
   let text = JSON.stringify(data);
   for (const [oldName, newName] of Object.entries(OLD_ITEM_NAMES)) {
@@ -78,6 +90,10 @@ const Save = {
       graceLeft: game.graceLeft,
       peakIncome: game.peakIncome,
       zinesSold: game.zinesSold,
+      firstTruck: game.firstTruck,
+      milestones: { ...game.milestones },
+      zineSales: game.zineSales.map((sale) => ({ ...sale })),
+      bestZinesPerSecond: game.bestZinesPerSecond,
       beltsUnlocked: game.beltsUnlocked,
       beltDir: game.beltDir,
       ledger: {
@@ -122,6 +138,10 @@ const Save = {
     // Saves from before belts were locked had belts from the start
     game.zinesSold = data.zinesSold ?? BELTS_UNLOCK_ZINES;
     game.beltsUnlocked = data.beltsUnlocked ?? true;
+    game.firstTruck = data.firstTruck ?? null; // saves from before the scorecard win on their next truck
+    game.milestones = data.milestones ? { ...data.milestones } : oldSaveMilestones(data);
+    game.zineSales = (data.zineSales ?? []).map((sale) => ({ ...sale }));
+    game.bestZinesPerSecond = data.bestZinesPerSecond ?? 0;
     game.portHighlightUntil = 0;
     game.beltDir = data.beltDir;
     game.ledger = {

@@ -20,6 +20,40 @@ function perSecond(n) {
   return `$${n.toFixed(1)}/s`;
 }
 
+// Like perSecond, with the minus sign before the $.
+function signedPerSecond(n) {
+  return `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(1)}/s`;
+}
+
+function zineRate(n) {
+  return n.toFixed(1);
+}
+
+// When a record was reached: game time, "–" if not yet, or "Unknown" for old saves.
+function reachedAt(time) {
+  if (time === null) return "–";
+  if (time === MILESTONE_UNKNOWN) return "Unknown";
+  return clock(time);
+}
+
+// The Scorecard's records, each reached once (except the best rate, which only goes up).
+const RECORD_ROWS = [
+  { label: "Production license", show: (game) => reachedAt(game.milestones.production) },
+  { label: "$10,000 profit", show: (game) => reachedAt(game.milestones.profit10k) },
+  { label: "$100,000 profit", show: (game) => reachedAt(game.milestones.profit100k) },
+  { label: "Best Zines/s", show: (game) => zineRate(game.bestZinesPerSecond) },
+];
+
+// The Scorecard's rows, each shown from a Game.scorecard() result.
+const SCORE_ROWS = [
+  { label: "Time", show: (card) => clock(card.time) },
+  { label: "Profit", show: (card) => signedPerSecond(card.profit) },
+  { label: "Zines/s", show: (card) => zineRate(card.zinesPerSecond ?? 0) },
+  { label: "Floor size", show: (card) => `${card.cols * card.rows} squares` },
+  { label: "Floor used", show: (card) => `${card.used} (${Math.round((100 * card.used) / (card.cols * card.rows))}%)` },
+  { label: "Floor usage ratio", show: (card) => card.ratio.toFixed(2) },
+];
+
 // Seconds as m:ss.
 function clock(seconds) {
   const s = Math.max(0, Math.ceil(seconds));
@@ -60,6 +94,8 @@ const UI = {
     this.statRate = document.getElementById("stat-rate");
     this.listedEntries = -1; // entry count the list was last built for
 
+    this.initScorecard();
+
     this.cashEl.addEventListener("click", () => this.toggleLedger());
     document.getElementById("money").addEventListener("click", () => this.toggleLedger());
     document.getElementById("ledger-close").addEventListener("click", () => this.toggleLedger());
@@ -68,6 +104,62 @@ const UI = {
 
     this.tickClock();
     setInterval(() => this.tickClock(), 10_000);
+  },
+
+  // Scorecard window: a row per number, with the first-truck record and the live value.
+  initScorecard() {
+    this.scorecardEl = document.getElementById("scorecard");
+    this.scoreGoalEl = document.getElementById("score-goal");
+    this.scoreCells = SCORE_ROWS.map((scoreRow) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${scoreRow.label}</td><td></td><td></td>`;
+      document.getElementById("score-rows").append(row);
+      return { first: row.children[1], now: row.children[2] };
+    });
+    this.recordCells = RECORD_ROWS.map((recordRow) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${recordRow.label}</td><td></td>`;
+      document.getElementById("record-rows").append(row);
+      return row.children[1];
+    });
+    this.shownWon = null; // whether the first truck had left at the last frame; null before the first
+
+    document.getElementById("scorecard-close").addEventListener("click", () => this.toggleWindow(this.scorecardEl));
+    const copy = document.getElementById("score-copy");
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(this.scorecardText(this.game));
+        setText(copy, "Copied");
+        setTimeout(() => setText(copy, "Copy"), 1500);
+      } catch {
+        // Clipboard blocked: show the text so it can be copied by hand
+        this.showDialog("Scorecard", this.scorecardText(this.game));
+      }
+    });
+  },
+
+  // Plain text for sharing.
+  scorecardText(game) {
+    const line = (card) => SCORE_ROWS.map((scoreRow) => `${scoreRow.label} ${scoreRow.show(card)}`).join(" · ");
+    const first = game.firstTruck ? line(game.firstTruck) : "not yet";
+    const records = RECORD_ROWS.map((recordRow) => `${recordRow.label} ${recordRow.show(game)}`).join(" · ");
+    return `Print95 scorecard\nFirst truck: ${first}\nNow: ${line(game.scorecard())}\nRecords: ${records}`;
+  },
+
+  renderScorecard(game) {
+    const now = game.scorecard();
+    const first = game.firstTruck;
+    setText(
+      this.scoreGoalEl,
+      first
+        ? `First truck shipped at ${clock(first.time)}. The shop keeps running: beat your own numbers.`
+        : "Goal: fill a Truck Dock and send out your first truck. Its numbers are kept here to compare against.",
+    );
+    SCORE_ROWS.forEach((scoreRow, i) => {
+      setText(this.scoreCells[i].first, first ? scoreRow.show(first) : "–");
+      setText(this.scoreCells[i].now, scoreRow.show(now));
+    });
+    RECORD_ROWS.forEach((recordRow, i) => setText(this.recordCells[i], recordRow.show(game)));
   },
 
   // How to Play window. Opens on load unless "Don't show this again" was ticked before.
@@ -118,7 +210,12 @@ const UI = {
       });
     }
 
-    const windows = { shop: this.shopEl, ledger: document.getElementById("ledger"), help: this.helpEl };
+    const windows = {
+      shop: this.shopEl,
+      ledger: document.getElementById("ledger"),
+      scorecard: document.getElementById("scorecard"),
+      help: this.helpEl,
+    };
     for (const button of this.menuEl.querySelectorAll("button[data-open]")) {
       button.addEventListener("click", () => {
         this.openWindow(windows[button.dataset.open]);
@@ -202,6 +299,7 @@ const UI = {
     this.ledgerEl.hidden = true;
     this.shopEl.hidden = true;
     this.helpEl.hidden = true;
+    this.scorecardEl.hidden = true;
     el.hidden = false;
     if (el === this.ledgerEl) this.listedEntries = -1; // rebuild the list now it shows
   },
@@ -316,12 +414,19 @@ const UI = {
 
   // Called every frame.
   render(game) {
+    this.game = game;
     setText(this.cashEl, `Cash: ${money(game.cash)}`);
     setText(this.holdingEl, `Holding: ${game.hand ?? "Nothing"}`);
     this.renderMoney(game);
     if (game.bankrupt) this.showBankrupt(game);
     if (!this.ledgerEl.hidden) this.renderLedger(game);
     if (!this.shopEl.hidden) this.renderShop(game);
+
+    // The first full truck is the soft win: open the Scorecard once, when it happens
+    const won = game.firstTruck !== null;
+    if (this.shownWon === false && won) this.openWindow(this.scorecardEl);
+    this.shownWon = won;
+    if (!this.scorecardEl.hidden) this.renderScorecard(game);
 
     // Menu items that need a license, or belts unlocked, stay hidden until then
     const unlockKey = `${game.licenses.size}:${game.beltsUnlocked}`;

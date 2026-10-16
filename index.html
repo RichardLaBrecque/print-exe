@@ -406,7 +406,7 @@
       font-size: 12px;
     }
 
-    #help-ok {
+    #help-ok, #score-copy {
       min-width: 75px;
       height: 24px;
       border: 0;
@@ -417,6 +417,13 @@
     .stats { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
     .stats td { padding: 2px 0; }
     .stats td:last-child { text-align: right; font-weight: bold; }
+
+    /* Scorecard: one row per number, first-truck record beside the live value */
+    .score-goal { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+    .score-table th, .score-table td { white-space: nowrap; }
+    .score-table th { padding: 2px 0 4px; font-size: 11px; text-align: right; color: #404040; }
+    .score-table td:not(:first-child) { padding-left: 12px; text-align: right; font-weight: bold; }
+    .score-note { margin: 0; font-size: 11px; line-height: 1.4; color: #404040; }
 
     .list {
       height: 140px;
@@ -511,6 +518,10 @@
         </ul>
         <p><b>Grow:</b> automate with belts, buy licenses for roll paper and production
           equipment, then run rolls through presses, sheeters and binders to pallets and trucks.</p>
+        <p><b>Goal:</b> fill a Truck Dock and send out your first truck. The shop keeps running
+          after that. The Scorecard in the Start menu keeps your first-truck numbers beside your
+          current ones, plus records like your time to $10,000 profit, so you can share them and
+          try to beat them.</p>
       </div>
       <div class="help-footer">
         <label><input id="help-hide" type="checkbox"> Don't show this again</label>
@@ -536,6 +547,30 @@
     </div>
   </div>
 
+  <div id="scorecard" class="window raised" hidden>
+    <div class="title-bar">
+      <span>Scorecard.exe</span>
+      <button id="scorecard-close" class="raised" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="window-body">
+      <p id="score-goal" class="score-goal"></p>
+      <table class="stats score-table">
+        <thead><tr><th></th><th>First truck</th><th>Now</th></tr></thead>
+        <tbody id="score-rows"></tbody>
+      </table>
+      <table class="stats score-table">
+        <thead><tr><th></th><th>Records</th></tr></thead>
+        <tbody id="record-rows"></tbody>
+      </table>
+      <p class="score-note">Floor usage ratio: profit per minute for each floor square, times the
+        share of the floor in use. Earn more from less floor, and leave less of it empty.</p>
+      <div class="help-footer">
+        <span></span>
+        <button id="score-copy" class="raised" type="button">Copy</button>
+      </div>
+    </div>
+  </div>
+
   <div id="taskbar">
     <div id="start-menu" class="raised" hidden>
       <div class="banner"><span><b>Print</b>95</span></div>
@@ -551,6 +586,7 @@
         <li class="sep" role="separator"></li>
         <li><button type="button" data-open="shop"><span class="check"></span>Shop...</button></li>
         <li><button type="button" data-open="ledger"><span class="check"></span>Ledger...</button></li>
+        <li><button type="button" data-open="scorecard"><span class="check"></span>Scorecard...</button></li>
         <li><button type="button" data-open="help"><span class="check"></span>How to Play...</button></li>
         <li class="sep" role="separator"></li>
         <li><button type="button" data-action="fit"><span class="check"></span>View Whole Floor<span class="key">F</span></button></li>
@@ -575,12 +611,12 @@
   </div>
 
   <!-- Bump ?v= on every release so browsers fetch the new scripts instead of cached ones. -->
-  <script src="machines.js?v=2026-10-16.6"></script>
-  <script src="production.js?v=2026-10-16.6"></script>
-  <script src="belts.js?v=2026-10-16.6"></script>
-  <script src="catalog.js?v=2026-10-16.6"></script>
-  <script src="save.js?v=2026-10-16.6"></script>
-  <script src="ui.js?v=2026-10-16.6"></script>
-  <script src="game.js?v=2026-10-16.6"></script>
+  <script src="machines.js?v=2026-10-16.8"></script>
+  <script src="production.js?v=2026-10-16.8"></script>
+  <script src="belts.js?v=2026-10-16.8"></script>
+  <script src="catalog.js?v=2026-10-16.8"></script>
+  <script src="save.js?v=2026-10-16.8"></script>
+  <script src="ui.js?v=2026-10-16.8"></script>
+  <script src="game.js?v=2026-10-16.8"></script>
 </body>
 </html>

@@ -1097,6 +1097,7 @@ class Outbox extends Machine {
     this.inTray.take();
     this.shipped += 1;
     game.zinesSold += 1;
+    game.sellZines(1);
     game.earn(ZINE_PRICE, "Zine sold");
     const { x, y, w } = this.rect;
     game.floatText(`+$${ZINE_PRICE}`, x + w / 2, y);
