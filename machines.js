@@ -55,7 +55,10 @@ const PRINT_SECONDS = 4;
 const AUTO_STAPLE_SECONDS = 2;
 const STAPLER_UPGRADE_COST = 120;
 const AUTO_STAPLER_UPKEEP = 6; // $ per minute, up from the Manual Stapler's 2
-const SHIP_SECONDS = 0.6;
+// An Outbox ships 2 Zines a second: enough for an Express Belt, or two full belts once upgraded.
+const SHIP_SECONDS = 0.5;
+// The Outbox upgrade adds a second IN port, for less than a second Outbox.
+const OUTBOX_UPGRADE_COST = 50;
 const TRAY_SIZE = 5;
 const ZINE_PRICE = 10;
 const INK = "#4a4f5c";
@@ -146,8 +149,11 @@ class Machine {
     this.accent = accent;
     this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
     this.outTray = outTray;
-    this.inPort = portIn ? this.portEdges("in")[0] : null; // { row, dir }: row offset in the column, facing DIRS[dir]
-    this.outPort = portOut ? this.portEdges("out")[0] : null;
+    // { kind: "in" | "out", row, dir }: row offset in that tray column, facing DIRS[dir]
+    this.ports = [
+      ...(portIn ? [{ kind: "in", ...this.portEdges("in")[0] }] : []),
+      ...(portOut ? [{ kind: "out", ...this.portEdges("out")[0] }] : []),
+    ];
     if (portOut) outTray.pullable = false;
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.shake = 0;
@@ -253,17 +259,21 @@ class Machine {
       col: this.col,
       row: this.row,
       trays: this.allTrays().map((tray) => tray.saveState()),
-      inPort: this.inPort,
-      outPort: this.outPort,
+      ports: this.ports.map((port) => ({ ...port })),
       portTimer: this.portTimer,
     };
   }
 
-  // Saves from before ports keep each machine's default ports.
+  // Saves from before ports keep each machine's default ports; saves from the one-port
+  // version stored them as inPort and outPort.
   loadState(s) {
     this.allTrays().forEach((tray, i) => tray.loadState(s.trays[i]));
-    if (s.inPort && this.inPort) this.inPort = { ...s.inPort };
-    if (s.outPort && this.outPort) this.outPort = { ...s.outPort };
+    if (s.ports) {
+      this.ports = s.ports.map((port) => ({ ...port }));
+    } else {
+      if (s.inPort && this.inPort) Object.assign(this.inPort, s.inPort);
+      if (s.outPort && this.outPort) Object.assign(this.outPort, s.outPort);
+    }
     this.portTimer = s.portTimer ?? 0;
   }
 
@@ -302,49 +312,79 @@ class Machine {
     return edges;
   }
 
-  port(kind) {
-    return kind === "in" ? this.inPort : this.outPort;
+  // The first IN or OUT port; most machines have at most one of each.
+  get inPort() {
+    return this.ports.find((port) => port.kind === "in") ?? null;
   }
 
-  // The port's own square on the machine, and the square outside it that it faces.
-  portTile(kind) {
-    return { col: this.col + (kind === "in" ? 0 : this.cols - 1), row: this.row + this.port(kind).row };
+  get outPort() {
+    return this.ports.find((port) => port.kind === "out") ?? null;
   }
 
-  portOutside(kind) {
-    const tile = this.portTile(kind);
-    const d = DIRS[this.port(kind).dir];
+  // A port's own square on the machine, and the square outside it that it faces.
+  portTile(port) {
+    return { col: this.col + (port.kind === "in" ? 0 : this.cols - 1), row: this.row + port.row };
+  }
+
+  portOutside(port) {
+    const tile = this.portTile(port);
+    const d = DIRS[port.dir];
     return { col: tile.col + d.x, row: tile.row + d.y };
   }
 
-  rotatePort(kind) {
-    const edges = this.portEdges(kind);
-    const now = this.port(kind);
-    const next = edges[(edges.findIndex((e) => e.row === now.row && e.dir === now.dir) + 1) % edges.length];
-    if (kind === "in") this.inPort = { ...next };
-    else this.outPort = { ...next };
+  // Edges of a column no other port of that kind is using.
+  freeEdges(kind, except = null) {
+    const taken = this.ports.filter((p) => p.kind === kind && p !== except);
+    return this.portEdges(kind).filter((e) => !taken.some((p) => p.row === e.row && p.dir === e.dir));
   }
 
-  // Which port, if any, a Belt tool tap on (col, row) turns: any square of a ported tray column.
-  portKindAt(col, row) {
+  // Add a port on the first free edge, preferring a tile without one (e.g. the Outbox upgrade).
+  addPort(kind) {
+    const free = this.freeEdges(kind);
+    const edge = free.find((e) => !this.ports.some((p) => p.kind === kind && p.row === e.row)) ?? free[0];
+    if (edge) this.ports.push({ kind, ...edge });
+  }
+
+  // Move the port to the next edge of its column, skipping edges another port is on.
+  rotatePort(port) {
+    const edges = this.portEdges(port.kind);
+    const free = this.freeEdges(port.kind, port);
+    const start = edges.findIndex((e) => e.row === port.row && e.dir === port.dir);
+    for (let i = 1; i <= edges.length; i++) {
+      const next = edges[(start + i) % edges.length];
+      if (free.some((e) => e.row === next.row && e.dir === next.dir)) {
+        port.row = next.row;
+        port.dir = next.dir;
+        return;
+      }
+    }
+  }
+
+  // The port a Belt tool tap on (col, row) turns: on a ported tray column, the port on the
+  // tapped tile if there is one, otherwise the column's first port.
+  portAtTile(col, row) {
     const part = this.partAt((col + 0.5) * TILE, (row + 0.5) * TILE);
-    if (part?.startsWith("in:") && this.inPort) return "in";
-    if (part === "out" && this.outPort) return "out";
-    return null;
+    const kind = part?.startsWith("in:") ? "in" : part === "out" ? "out" : null;
+    if (!kind) return null;
+    const column = this.ports.filter((p) => p.kind === kind);
+    return column.find((p) => this.row + p.row === row) ?? column[0] ?? null;
   }
 
-  // An IN port takes items only from the square it faces; other machines take from anywhere.
+  // IN ports take items only from the square they face; other machines take from anywhere.
   takesInFrom(col, row, from) {
-    if (!this.inPort) return true;
-    const tile = this.portTile("in");
-    const outside = this.portOutside("in");
-    return tile.col === col && tile.row === row && outside.col === from.col && outside.row === from.row;
+    const inPorts = this.ports.filter((p) => p.kind === "in");
+    if (inPorts.length === 0) return true;
+    return inPorts.some((port) => {
+      const tile = this.portTile(port);
+      const outside = this.portOutside(port);
+      return tile.col === col && tile.row === row && outside.col === from.col && outside.row === from.row;
+    });
   }
 
   // Hand one item from the OUT port to the belt or IN tray it faces. Returns true if it went.
   pushOut(game) {
-    const from = this.portTile("out");
-    const { col, row } = this.portOutside("out");
+    const from = this.portTile(this.outPort);
+    const { col, row } = this.portOutside(this.outPort);
     const piece = game.beltAt(col, row);
     if (piece) {
       const lane = piece.receiverFrom(from.col, from.row);
@@ -361,12 +401,12 @@ class Machine {
   // A triangle on each port's edge: OUT points out, IN points in. They pulse while
   // game.portHighlightUntil is ahead, to show where belts connect.
   drawPorts(ctx, game) {
-    for (const kind of ["in", "out"]) {
-      if (!this.port(kind)) continue;
-      const { col, row } = this.portTile(kind);
+    for (const port of this.ports) {
+      const { kind } = port;
+      const { col, row } = this.portTile(port);
       ctx.save();
       ctx.translate(col * TILE + TILE / 2, row * TILE + TILE / 2);
-      ctx.rotate((this.port(kind).dir * Math.PI) / 2);
+      ctx.rotate((port.dir * Math.PI) / 2);
       if (game.time < game.portHighlightUntil) {
         const pulse = 0.5 + 0.5 * Math.sin(game.time * 8);
         ctx.beginPath();
@@ -670,7 +710,7 @@ class Supply extends Machine {
     this.incoming = s.incoming;
     this.autoReorder = s.autoReorder;
     // Saves from the chute version stored its direction as chuteDir
-    if (!s.outPort && s.chuteDir != null && this.outPort) this.outPort = { row: 0, dir: s.chuteDir };
+    if (!s.ports && !s.outPort && s.chuteDir != null && this.outPort) Object.assign(this.outPort, { row: 0, dir: s.chuteDir });
   }
 
   hasRoomForDelivery() {
@@ -982,7 +1022,7 @@ class ManualStapler extends Machine {
 class Outbox extends Machine {
   constructor(at) {
     super("Outbox", {
-      description: `Sells Zines for $${ZINE_PRICE} each.`,
+      description: `Sells Zines for $${ZINE_PRICE} each, up to two a second.`,
       upkeep: 2,
       ...at,
       portIn: true,
@@ -993,16 +1033,33 @@ class Outbox extends Machine {
     });
     this.shipped = 0;
     this.elapsed = 0;
+    this.level = 0; // 1 = upgraded: a second IN port
   }
 
   saveState() {
-    return { ...super.saveState(), shipped: this.shipped, elapsed: this.elapsed };
+    return { ...super.saveState(), shipped: this.shipped, elapsed: this.elapsed, level: this.level };
   }
 
+  // The saved ports already include the second IN port, so only the rest of the upgrade is reapplied.
   loadState(s) {
     super.loadState(s);
     this.shipped = s.shipped;
     this.elapsed = s.elapsed;
+    if (s.level === 1) this.applyUpgrade();
+  }
+
+  upgradeCost() { return this.level === 0 ? OUTBOX_UPGRADE_COST : null; }
+  upgradeHint() { return "Already has two inputs."; }
+
+  upgrade() {
+    this.applyUpgrade();
+    this.addPort("in");
+  }
+
+  applyUpgrade() {
+    this.level = 1;
+    this.title = "Outbox (2 inputs)";
+    this.description = `Sells Zines for $${ZINE_PRICE} each, up to two a second, through two IN triangles.`;
   }
 
   bodyHint() { return `Ships Zines for $${ZINE_PRICE} each. Shipped: ${this.shipped}`; }
@@ -1021,7 +1078,7 @@ class Outbox extends Machine {
     this.elapsed += dt;
     if (this.elapsed < SHIP_SECONDS) return;
 
-    this.elapsed = 0;
+    this.elapsed -= SHIP_SECONDS; // carry the leftover so the rate stays exactly 2 a second
     this.inTray.take();
     this.shipped += 1;
     game.zinesSold += 1;

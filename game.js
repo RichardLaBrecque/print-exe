@@ -315,11 +315,10 @@ const Game = {
   // In front of an OUT port, carry on the way it points. In front of an IN port, point into it.
   placementDir(col, row) {
     for (const m of this.machines) {
-      for (const kind of ["out", "in"]) {
-        if (!m.port(kind)) continue;
-        const outside = m.portOutside(kind);
+      for (const port of m.ports) {
+        const outside = m.portOutside(port);
         if (outside.col !== col || outside.row !== row) continue;
-        return kind === "out" ? m.port(kind).dir : (m.port(kind).dir + 2) % 4;
+        return port.kind === "out" ? port.dir : (port.dir + 2) % 4;
       }
     }
 
@@ -331,8 +330,8 @@ const Game = {
   // The machine and port a Belt tool tap on (col, row) would turn, if any.
   portAt(col, row) {
     const machine = this.machineAtTile(col, row);
-    const kind = machine?.portKindAt(col, row);
-    return kind ? { machine, kind } : null;
+    const port = machine?.portAtTile(col, row);
+    return port ? { machine, port } : null;
   },
 
   // The IN tray on (col, row) that will take an item handed over from `from`, if any.
@@ -605,7 +604,7 @@ const Game = {
     const { col, row } = this.tileAt(wx, wy);
     if (this.tool === "belt" || this.tool === "express") {
       const port = this.portAt(col, row);
-      if (port) port.machine.rotatePort(port.kind);
+      if (port) port.machine.rotatePort(port.port);
       else this.tapBelt(col, row, wx, wy);
       return;
     }
