@@ -135,8 +135,8 @@ class Machine {
   // OUT port pushes an item a second onto the square it faces, and belts can't pull from it.
   // Hands still use the whole tray. Turn a port with the Belt tool.
   //
-  // `wallOnly` machines (Outbox, Truck Dock) ship goods out of the building, so they must
-  // touch the top or left wall. The floor only grows right and down, so those walls never move.
+  // `wallOnly` machines (Outbox, Truck Dock and the paper supplies) take deliveries in or ship
+  // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "",
     inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, wallOnly = false,
@@ -679,7 +679,7 @@ class Supply extends Machine {
   constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, rows = 2, chute = false, ...rest }) {
     const stock = new Tray({ item, capacity });
     stock.count = startStock;
-    super(title, { ...rest, cols: 3, rows, inTray: stock, outTray: stock, portOut: chute });
+    super(title, { ...rest, cols: 3, rows, inTray: stock, outTray: stock, portOut: chute, wallOnly: true });
     this.delivery = delivery; // { amount, price, seconds }
     this.reorderCost = reorderCost;
     this.sample = sample; // free sheets sent when you're broke and out of paper, so you can't get stuck
