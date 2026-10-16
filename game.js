@@ -17,6 +17,12 @@ const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
 const EXPAND_STEP = 2; // rows or columns added per expansion
 const TILE_PRICE = 3; // cost of each new floor square
 
+// The yard outside the top and left walls: a planter bed against the wall, then parking.
+// Decoration only; nothing can be built there.
+const YARD = TILE; // depth of the yard strip
+const PLANTER = 16; // depth of the planter bed
+const STALL = TILE / 2; // width of a parking space
+
 const Draw = {
   font(size, bold) {
     return `${bold ? "bold " : ""}${size}px "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, sans-serif`;
@@ -763,10 +769,10 @@ const Camera = {
     return { x: (wx - this.x) * this.zoom + Game.width / 2, y: (wy - this.y) * this.zoom + Game.height / 2 };
   },
 
-  // Zoom that shows the whole floor plus the expand strips, with a margin.
+  // Zoom that shows the yard, the whole floor and the expand strips, with a margin.
   fitZoom() {
-    const w = (Game.floor.cols + 1) * TILE;
-    const h = (Game.floor.rows + 1) * TILE;
+    const w = YARD + (Game.floor.cols + 1) * TILE;
+    const h = YARD + (Game.floor.rows + 1) * TILE;
     return Math.min(Game.width / (w + TILE), Game.height / (h + TILE), this.maxZoom);
   },
 
@@ -778,8 +784,8 @@ const Camera = {
   // Show the whole floor. Also the Start menu's "View Whole Floor".
   fit() {
     this.zoom = this.fitZoom();
-    this.x = ((Game.floor.cols + 1) * TILE) / 2;
-    this.y = ((Game.floor.rows + 1) * TILE) / 2;
+    this.x = ((Game.floor.cols + 1) * TILE - YARD) / 2;
+    this.y = ((Game.floor.rows + 1) * TILE - YARD) / 2;
     this.fitted = true;
   },
 
@@ -799,10 +805,10 @@ const Camera = {
     this.clamp();
   },
 
-  // Keep the middle of the screen over the floor or its expand strips.
+  // Keep the middle of the screen over the yard, the floor or its expand strips.
   clamp() {
-    this.x = Math.min((Game.floor.cols + 1) * TILE, Math.max(0, this.x));
-    this.y = Math.min((Game.floor.rows + 1) * TILE, Math.max(0, this.y));
+    this.x = Math.min((Game.floor.cols + 1) * TILE, Math.max(-YARD, this.x));
+    this.y = Math.min((Game.floor.rows + 1) * TILE, Math.max(-YARD, this.y));
   },
 };
 
@@ -822,6 +828,114 @@ function layout() {
     Camera.zoom = Math.min(Camera.maxZoom, Math.max(Camera.minZoom, Camera.zoom));
     Camera.clamp();
   }
+}
+
+// The yard along the top and left walls. Its corner and the first square of each wall are the
+// entrance plaza; past that, each wall gets a planter bed and a row of parking spaces, which
+// grow with the floor.
+function drawYard() {
+  const fw = Game.floor.cols * TILE;
+  const fh = Game.floor.rows * TILE;
+
+  // Asphalt along both walls
+  ctx.fillStyle = "#55595f";
+  ctx.fillRect(-YARD, -YARD, fw + YARD, YARD);
+  ctx.fillRect(-YARD, 0, YARD, fh);
+
+  // Planter beds against the wall, with a concrete curb and a shrub every half square
+  ctx.fillStyle = "#c9c5bc";
+  ctx.fillRect(TILE, -PLANTER - 3, fw - TILE, PLANTER + 3);
+  ctx.fillRect(-PLANTER - 3, TILE, PLANTER + 3, fh - TILE);
+  ctx.fillStyle = "#6fa84a";
+  ctx.fillRect(TILE, -PLANTER, fw - TILE, PLANTER);
+  ctx.fillRect(-PLANTER, TILE, PLANTER, fh - TILE);
+  ctx.fillStyle = "#4e8a33";
+  for (let x = TILE + STALL / 2; x < fw; x += STALL) drawShrub(x, -PLANTER / 2, 5);
+  for (let y = TILE + STALL / 2; y < fh; y += STALL) drawShrub(-PLANTER / 2, y, 5);
+
+  // Parking space lines, square to the wall
+  ctx.strokeStyle = "#f2f2f4";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = TILE; x <= fw; x += STALL) {
+    ctx.moveTo(x, -YARD + 6);
+    ctx.lineTo(x, -PLANTER - 6);
+  }
+  for (let y = TILE; y <= fh; y += STALL) {
+    ctx.moveTo(-YARD + 6, y);
+    ctx.lineTo(-PLANTER - 6, y);
+  }
+  ctx.stroke();
+
+  drawEntrancePlaza();
+}
+
+function drawShrub(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Concrete plaza in the corner, reaching along each wall to its doors, with a round planter
+// in the corner and a small planter box either side of each door.
+function drawEntrancePlaza() {
+  ctx.fillStyle = "#d9d6cf";
+  ctx.fillRect(-YARD, -YARD, YARD + TILE, YARD);
+  ctx.fillRect(-YARD, 0, YARD, TILE);
+
+  // Paver seams
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.08)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < 6; i++) {
+    const at = -YARD + (i * (YARD + TILE)) / 6;
+    ctx.moveTo(at, -YARD);
+    ctx.lineTo(at, at < 0 ? TILE : 0);
+    ctx.moveTo(-YARD, at);
+    ctx.lineTo(at < 0 ? TILE : 0, at);
+  }
+  ctx.stroke();
+
+  // Round planter in the corner
+  ctx.fillStyle = "#c9c5bc";
+  drawShrub(-YARD / 2, -YARD / 2, 20);
+  ctx.fillStyle = "#6fa84a";
+  drawShrub(-YARD / 2, -YARD / 2, 16);
+  ctx.fillStyle = "#4e8a33";
+  drawShrub(-YARD / 2 - 5, -YARD / 2 - 3, 6);
+  drawShrub(-YARD / 2 + 5, -YARD / 2 + 4, 6);
+
+  // Planter boxes beside the doors on the top wall, then the same on the left wall
+  for (const at of [3, TILE - 13]) {
+    drawPlanterBox(at, -12, 10, 12);
+    drawPlanterBox(-12, at, 12, 10);
+  }
+}
+
+function drawPlanterBox(x, y, w, h) {
+  ctx.fillStyle = "#c9c5bc";
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "#4e8a33";
+  drawShrub(x + w / 2, y + h / 2, Math.min(w, h) / 2 - 1);
+}
+
+// Glass double doors set into the top and left walls, over the wall line drawFloor draws.
+function drawEntranceDoors() {
+  const from = 16;
+  const to = TILE - 16;
+  ctx.fillStyle = "#9fd3e6";
+  ctx.fillRect(from, -3, to - from, 6);
+  ctx.fillRect(-3, from, 6, to - from);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(from, -3, to - from, 6);
+  ctx.strokeRect(-3, from, 6, to - from);
+  ctx.beginPath();
+  ctx.moveTo(TILE / 2, -3);
+  ctx.lineTo(TILE / 2, 3);
+  ctx.moveTo(-3, TILE / 2);
+  ctx.lineTo(3, TILE / 2);
+  ctx.stroke();
 }
 
 function drawFloor() {
@@ -1007,7 +1121,9 @@ function render() {
 
   // World space. The dragged machine draws last so it sits on top.
   ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (Game.width / 2 - Camera.x * z), dpr * (Game.height / 2 - Camera.y * z));
+  drawYard();
   drawFloor();
+  drawEntranceDoors();
   drawAllowedTiles();
   drawExpanders();
   for (const b of Game.belts.values()) b.draw(ctx, Game.time);
