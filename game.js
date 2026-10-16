@@ -1026,8 +1026,53 @@ function drawHoverInfo() {
   Draw.infoTip(ctx, target.title, `${target.description}${upkeep}`, hover.x, hover.y);
 }
 
+// A cursor that shows the item in your hand: a small arrow with the item on a white card beside it.
+// Built once per kind of item and kept, since drawing it on every mouse move would be wasteful.
+const HELD_CURSOR_SIZE = 48;
+const heldCursors = new Map();
+
+function heldCursor(item) {
+  if (!heldCursors.has(item)) {
+    const icon = document.createElement("canvas");
+    icon.width = HELD_CURSOR_SIZE;
+    icon.height = HELD_CURSOR_SIZE;
+    const c = icon.getContext("2d");
+    c.lineWidth = 2;
+    c.lineJoin = "round";
+
+    // The card behind the item, so it stands out on any floor color
+    c.fillStyle = "#ffffff";
+    c.strokeStyle = INK;
+    c.beginPath();
+    c.roundRect(12, 12, 34, 34, 6);
+    c.fill();
+    c.stroke();
+    drawItem(c, item, 17, 17, 24);
+
+    // The arrow's tip is the cursor's hot spot, at the top-left corner
+    c.beginPath();
+    c.moveTo(1, 1);
+    c.lineTo(1, 17);
+    c.lineTo(5.5, 12.5);
+    c.lineTo(9, 19);
+    c.lineTo(12, 17.5);
+    c.lineTo(8.5, 11);
+    c.lineTo(15, 11);
+    c.closePath();
+    c.fillStyle = "#ffffff";
+    c.fill();
+    c.strokeStyle = INK;
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    heldCursors.set(item, `url(${icon.toDataURL()}) 1 1, pointer`);
+  }
+  return heldCursors.get(item);
+}
+
 function hoverCursor(p) {
   if (Game.tool !== "select") return "crosshair";
+  if (Game.hand !== HAND.EMPTY) return heldCursor(Game.hand);
   const w = Camera.toWorld(p.x, p.y);
   const { col, row } = Game.tileAt(w.x, w.y);
   const overSomething = Game.machineAt(w.x, w.y) || Game.expanderAt(w.x, w.y) || Game.beltAt(col, row);
