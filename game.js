@@ -574,7 +574,24 @@ const Game = {
   },
 
   startMove(machine) {
-    this.moving = { machine, from: { col: machine.col, row: machine.row }, valid: true };
+    const allowed = machine.wallOnly ? this.allowedTiles(machine) : null;
+    this.moving = { machine, from: { col: machine.col, row: machine.row }, valid: true, allowed };
+  },
+
+  // Every square some valid spot for the machine would cover, as tile keys. Only wall-only
+  // machines need it, and they can only sit in column 0 or row 0, so just those spots are checked.
+  allowedTiles(machine) {
+    const spots = [];
+    for (let row = 0; row < this.floor.rows; row++) spots.push({ col: 0, row });
+    for (let col = 1; col < this.floor.cols; col++) spots.push({ col, row: 0 });
+    const tiles = new Set();
+    for (const { col, row } of spots) {
+      if (!this.canPlace(machine, col, row)) continue;
+      for (let r = row; r < row + machine.rows; r++) {
+        for (let c = col; c < col + machine.cols; c++) tiles.add(tileKey(c, r));
+      }
+    }
+    return tiles;
   },
 
   // Follows the pointer, snapped to the grid. The machine moves live; drop decides if it stays.
@@ -898,6 +915,18 @@ function drawUpgradeMarkers() {
   }
 }
 
+// Light green over the squares a machine with a placement rule can go, while it's dragged.
+function drawAllowedTiles() {
+  const allowed = Game.moving?.allowed;
+  if (!allowed) return;
+  ctx.fillStyle = "rgba(61, 220, 132, 0.12)";
+  for (let row = 0; row < Game.floor.rows; row++) {
+    for (let col = 0; col < Game.floor.cols; col++) {
+      if (allowed.has(tileKey(col, row))) ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
+    }
+  }
+}
+
 // Green or red tint over the footprint of the machine being dragged.
 function drawMoveGhost() {
   if (!Game.moving) return;
@@ -979,6 +1008,7 @@ function render() {
   // World space. The dragged machine draws last so it sits on top.
   ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (Game.width / 2 - Camera.x * z), dpr * (Game.height / 2 - Camera.y * z));
   drawFloor();
+  drawAllowedTiles();
   drawExpanders();
   for (const b of Game.belts.values()) b.draw(ctx, Game.time);
   for (const b of Game.belts.values()) b.drawCargo(ctx);
