@@ -22,8 +22,7 @@ const HAND = {
   GUTS_ROLL: "Printed Roll: Guts",
   // Finished goods
   ZINE: "Zine",
-  BOOK: "Saddle-Stitched Book",
-  PERFECT_BOOK: "Perfect-Bound Book",
+  PERFECT_ZINE: "Perfect-Bound Zine",
   SADDLE_PALLET: "Pallet: Saddle-Stitched",
   PERFECT_PALLET: "Pallet: Perfect-Bound",
 };
@@ -639,17 +638,7 @@ function drawItem(ctx, item, x, y, s) {
     ctx.fillStyle = "#c08850";
     ctx.fill();
     ctx.stroke();
-  } else if (item === HAND.BOOK) {
-    // Thicker book: blue cover, page edges, stitched spine
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + s * 0.16, y + s * 0.12, s * 0.74, s * 0.8);
-    ctx.strokeRect(x + s * 0.16, y + s * 0.12, s * 0.74, s * 0.8);
-    ctx.fillStyle = "#3a6fd8";
-    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.74, s * 0.8);
-    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.74, s * 0.8);
-    ctx.fillStyle = "#ffffff";
-    for (const f of [0.2, 0.42, 0.64]) ctx.fillRect(x + s * 0.13, y + s * f, s * 0.06, s * 0.08);
-  } else if (item === HAND.PERFECT_BOOK) {
+  } else if (item === HAND.PERFECT_ZINE) {
     // Thick block of pages wrapped in an orange cover with a square, glued spine
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(x + s * 0.24, y + s * 0.12, s * 0.66, s * 0.8);
@@ -661,7 +650,7 @@ function drawItem(ctx, item, x, y, s) {
     ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8); // spine
     ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8);
   } else if (item === HAND.SADDLE_PALLET || item === HAND.PERFECT_PALLET) {
-    // Wrapped stack of boxes on a wooden pallet, boxes tinted by the kind of book
+    // Wrapped stack of boxes on a wooden pallet, boxes tinted by the kind of zine
     ctx.fillStyle = "#c08850";
     ctx.fillRect(x, y + s * 0.8, s, s * 0.14);
     ctx.strokeRect(x, y + s * 0.8, s, s * 0.14);

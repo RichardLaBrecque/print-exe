@@ -19,6 +19,7 @@ const MACHINE_TYPES = {
   TrashCan: (at) => new TrashCan(at),
   PaperRollRack: (at) => new PaperRollRack(at),
   RollPress: (at) => new RollPress(at),
+  SheetFedPress: (at) => new SheetFedPress(at),
   Sheeter: (at) => new Sheeter(at),
   SaddleStitcher: (at) => new SaddleStitcher(at),
   PerfectBinder: (at) => new PerfectBinder(at),
@@ -33,6 +34,21 @@ const BELT_TYPES = {
   Splitter: (s) => new Splitter(s.col, s.row, s.dir),
   Bridge: (s) => new Bridge(s.col, s.row),
 };
+
+// Items renamed since saves began. Saddle-stitched books became plain Zines and
+// perfect-bound books became Perfect-Bound Zines.
+const OLD_ITEM_NAMES = {
+  "Saddle-Stitched Book": HAND.ZINE,
+  "Perfect-Bound Book": HAND.PERFECT_ZINE,
+};
+
+function renameOldItems(data) {
+  let text = JSON.stringify(data);
+  for (const [oldName, newName] of Object.entries(OLD_ITEM_NAMES)) {
+    text = text.replaceAll(JSON.stringify(oldName), JSON.stringify(newName));
+  }
+  return JSON.parse(text);
+}
 
 const Save = {
   // Set once New Shop or Open Save File has replaced the autosave and is reloading. The page's
@@ -77,6 +93,7 @@ const Save = {
   // Rebuild the shop from a snapshot. Throws if the data isn't a save this version understands.
   restore(game, data) {
     if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
+    data = renameOldItems(data);
 
     const machines = data.machines.map((s) => {
       const build = MACHINE_TYPES[s.type];

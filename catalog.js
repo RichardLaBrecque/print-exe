@@ -13,8 +13,8 @@ const LICENSES = {
   production: {
     name: "Production Equipment",
     price: 3000,
-    description: "Unlocks the Roll Press, Sheeter, binders, Palletizer, Truck Dock and Express Belts.",
-    unlocks: "Production equipment is now in the Shop: Roll Press, Sheeter, Saddle Stitcher, Perfect Binder, Finisher, Palletizer " +
+    description: "Unlocks the Roll Press, Sheet-Fed Press, Sheeter, binders, Palletizer, Truck Dock and Express Belts.",
+    unlocks: "Production equipment is now in the Shop: Roll Press, Sheet-Fed Press, Sheeter, Saddle Stitcher, Perfect Binder, Finisher, Palletizer " +
       "and Truck Dock. Express Belts are in the Start menu.",
   },
 };
@@ -40,6 +40,7 @@ const CATALOG = [
   { group: "Roll paper", requires: "rolls", name: "Paper Roll Rack", price: 200, build: () => new PaperRollRack({ col: 0, row: 0 }) },
 
   { group: "Production", requires: "production", name: "Roll Press", price: 1500, build: () => new RollPress({ col: 0, row: 0 }) },
+  { group: "Production", requires: "production", name: "Sheet-Fed Press", price: 900, build: () => new SheetFedPress({ col: 0, row: 0 }) },
   { group: "Production", requires: "production", name: "Sheeter", price: 400, build: () => new Sheeter({ col: 0, row: 0 }) },
   { group: "Production", requires: "production", name: "Saddle Stitcher", price: 600, build: () => new SaddleStitcher({ col: 0, row: 0 }) },
   { group: "Production", requires: "production", name: "Perfect Binder", price: 1200, build: () => new PerfectBinder({ col: 0, row: 0 }) },

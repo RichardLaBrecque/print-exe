@@ -1,48 +1,52 @@
 // Tier 2: production equipment.
 //
-//   Paper Roll Rack -> Roll Press -> Sheeter -> Saddle Stitcher -> Palletizer -> Truck Dock
+// Presses: a Roll Press prints rolls for any job (Saddle-Stitch, Cover or Guts). A Sheet-Fed
+// Press prints sheets, but only Saddle-Stitch and Cover: guts must be roll fed. A Sheeter cuts
+// any roll, blank or printed, into SHEETS_PER_ROLL sheets of the same kind, so blank rolls can
+// feed a Sheet-Fed Press.
 //
-// A roll-fed press prints rolls, which must be cut into sheets before they can be bound.
+// Binding:
+//   Saddle Stitcher: saddle-stitch sheets -> Zines, 4x an Auto Stapler.
+//   Perfect Binder:  1 Cover sheet + GUTS_PER_ZINE sheeted Guts -> a Perfect-Bound Zine.
+//   Finisher:        Cover sheets + a whole Guts roll (no sheeter) -> Perfect-Bound Zines, fastest.
 //
-// One roll is SHEETS_PER_ROLL sheets. Ratios, built around belts (1/s) and Express Belts (2/s):
-//   Roll Rack -> 1 Roll Press (1 roll / 5 s, a plain belt is plenty)
-//   -> 1 Sheeter (10 sheets / 5 s = 2 sheets/s, needs an Express Belt out)
-//   -> splitter -> 2 Saddle Stitchers (1/s each) -> merge onto 1 Express Belt (2/s)
-//   -> Palletizer -> Truck Dock.
+// Ratios, built around belts (1/s) and Express Belts (2/s):
+//   Roll Press 1 roll / 5 s -> Sheeter 2 sheets/s (Express out) -> 1 Saddle Stitcher (2/s).
+//   Sheet-Fed Press 1 sheet/s, so 2 of them also feed a Saddle Stitcher.
+//   Perfect Binder (1/s): 1 Guts Roll Press + Sheeter (2 guts/s) and 1 Sheet-Fed Cover press.
+//   Finisher (2/s): 2 Guts Roll Presses (a roll every 2.5 s between them) and 2 covers/s.
 // Rolls can't be carried by hand (see canCarry), so tier 2 runs on belts.
 
 const ROLL_PRESS_SECONDS = 5;
+const SHEET_PRESS_SECONDS = 1;
 const SHEETS_PER_ROLL = 10;
 const SHEETER_SECONDS = 5;
-const STITCHER_SECONDS = 1;
+const STITCHER_SECONDS = 0.5;
 const PRODUCTION_TRAY_SIZE = 10;
-// Perfect binding: the book waits until both its cover and its guts are ready, then binds. 1 cover + GUTS_PER_BOOK guts sheets per book.
-// Each binder needs 0.5 cover/s and 1 guts/s, so 1 Cover press + 2 Guts presses feed 4 binders.
-const GUTS_PER_BOOK = 2;
-const BIND_SECONDS = 2;
 
-// The Finisher takes guts as a whole roll, skipping the sheeter. One roll is enough guts for
-// SHEETS_PER_ROLL / GUTS_PER_BOOK books. At 1 book a second it uses exactly one Guts press's
-// rolls (1 every 5 s) and 1 cover/s, so 1 Cover press + 2 Guts presses feed 2 Finishers.
-const FINISH_SECONDS = 1;
+// Perfect binding: the zine waits until both its cover and its guts are ready, then binds.
+const GUTS_PER_ZINE = 2;
+const BIND_SECONDS = 1;
+const FINISH_SECONDS = 0.5; // the Finisher unrolls guts straight off a roll
+const PERFECT_ZINE_PRICE = 30; // 3x a saddle-stitch Zine
 
-const BOOKS_PER_PALLET = 10;
+const ZINES_PER_PALLET = 10;
 const PALLET_WRAP_SECONDS = 2;
 const PALLETS_PER_TRUCK = 2;
 const TRUCK_TRIP_SECONDS = 6;
 
-// Each kind of book, its pallet, and what a pallet pays when a truck delivers it.
+// Each kind of zine, its pallet, and the price per zine a truck is paid on delivery.
 const PALLETS = [
-  { book: HAND.BOOK, pallet: HAND.SADDLE_PALLET, bookPrice: 25 },
-  { book: HAND.PERFECT_BOOK, pallet: HAND.PERFECT_PALLET, bookPrice: 90 },
+  { zine: HAND.ZINE, pallet: HAND.SADDLE_PALLET, price: ZINE_PRICE },
+  { zine: HAND.PERFECT_ZINE, pallet: HAND.PERFECT_PALLET, price: PERFECT_ZINE_PRICE },
 ];
 
-function palletFor(book) {
-  return PALLETS.find((p) => p.book === book).pallet;
+function palletFor(zine) {
+  return PALLETS.find((p) => p.zine === zine).pallet;
 }
 
 function palletValue(pallet) {
-  return PALLETS.find((p) => p.pallet === pallet).bookPrice * BOOKS_PER_PALLET;
+  return PALLETS.find((p) => p.pallet === pallet).price * ZINES_PER_PALLET;
 }
 
 // Tier 2 paper: Blank Rolls by the truckload. 10 rolls = 100 sheets for $150,
@@ -63,25 +67,18 @@ class PaperRollRack extends Supply {
   }
 }
 
-// Roll-fed press. Prints whole rolls for the job it's set to:
-// Saddle-Stitch, Cover or Guts. Tap the body to switch jobs.
-class RollPress extends Converter {
-  constructor(at) {
-    super("Roll Press", {
-      description: `Prints a Blank Roll every ${ROLL_PRESS_SECONDS} seconds for its job: Saddle-Stitch, Cover or Guts. Tap the middle to switch jobs.`,
-      upkeep: 60,
-      ...at,
-      cols: 4,
-      rows: 3,
-      accent: "#5b8def",
-      input: HAND.BLANK_ROLL,
-      output: PRINTED_ROLLS,
-      seconds: ROLL_PRESS_SECONDS,
-      capacity: 5,
-    });
-    this.job = JOBS[0];
+// A press with a job setting. Tap the body to cycle through the jobs it can print; the job is
+// fixed when an item starts, so switching mid-print finishes the current item as it was.
+// `prints` is "roll" or "sheet": which kind of printed item a job makes.
+class Press extends Converter {
+  constructor(title, { jobs, prints, ...rest }) {
+    super(title, { ...rest, output: jobs.map((job) => job[prints]) });
+    this.jobs = jobs;
+    this.prints = prints;
+    this.job = jobs[0];
   }
 
+  // Saved as the job's place in JOBS, so saves from before the Sheet-Fed Press still load.
   saveState() {
     return { ...super.saveState(), job: JOBS.indexOf(this.job) };
   }
@@ -91,17 +88,16 @@ class RollPress extends Converter {
     this.job = JOBS[s.job];
   }
 
-  // The job is set when a roll starts, so switching mid-print finishes the current roll as it was.
   outputFor() {
-    return this.job.roll;
+    return this.job[this.prints];
   }
 
   canActivate() { return true; }
 
   activate(game) {
-    this.job = JOBS[(JOBS.indexOf(this.job) + 1) % JOBS.length];
+    this.job = this.jobs[(this.jobs.indexOf(this.job) + 1) % this.jobs.length];
     const { x, y, w } = this.rect;
-    const waiting = this.outTray.count > 0 && this.outTray.item !== this.job.roll;
+    const waiting = this.outTray.count > 0 && this.outTray.item !== this.outputFor();
     const note = waiting ? " It starts once the OUT tray is cleared." : "";
     game.showTip(`Now printing ${this.job.name}.${note}`, x + w / 2, y);
   }
@@ -109,6 +105,25 @@ class RollPress extends Converter {
   drawBody(ctx, r) {
     super.drawBody(ctx, r);
     this.drawBodyLabel(ctx, r, `JOB: ${this.job.label}`, this.job.color);
+  }
+}
+
+// Roll-fed press: prints whole rolls for any job, including Guts.
+class RollPress extends Press {
+  constructor(at) {
+    super("Roll Press", {
+      description: `Prints a Blank Roll every ${ROLL_PRESS_SECONDS} seconds for its job: Saddle-Stitch, Cover or Guts. Tap the middle to switch jobs.`,
+      upkeep: 60,
+      ...at,
+      cols: 4,
+      rows: 3,
+      accent: "#5b8def",
+      input: HAND.BLANK_ROLL,
+      jobs: JOBS,
+      prints: "roll",
+      seconds: ROLL_PRESS_SECONDS,
+      capacity: 5,
+    });
   }
 
   drawIcon(ctx, x, y, s) {
@@ -132,19 +147,58 @@ class RollPress extends Converter {
   }
 }
 
-// Cuts a printed roll into SHEETS_PER_ROLL sheets. Its 2 sheets/s
+// Sheet-fed press: prints Blank Sheets one at a time. Saddle-Stitch or Cover only;
+// guts must be roll fed.
+class SheetFedPress extends Press {
+  constructor(at) {
+    super("Sheet-Fed Press", {
+      description: "Prints a Blank Sheet a second for its job: Saddle-Stitch or Cover (guts must be roll fed). Tap the middle to switch jobs.",
+      upkeep: 30,
+      ...at,
+      cols: 4,
+      rows: 2,
+      accent: "#7e57c2",
+      input: HAND.BLANK_SHEET,
+      jobs: [JOBS[0], JOBS[1]],
+      prints: "sheet",
+      seconds: SHEET_PRESS_SECONDS,
+      capacity: PRODUCTION_TRAY_SIZE,
+    });
+  }
+
+  drawIcon(ctx, x, y, s) {
+    ctx.strokeStyle = INK;
+    // Feeder stack of sheets on the left, delivery stack on the right, cylinder between
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y + s * 0.45, s * 0.3, s * 0.35);
+    ctx.strokeRect(x, y + s * 0.45, s * 0.3, s * 0.35);
+    ctx.fillStyle = this.job.color;
+    ctx.fillRect(x + s * 0.7, y + s * 0.45, s * 0.3, s * 0.35);
+    ctx.strokeRect(x + s * 0.7, y + s * 0.45, s * 0.3, s * 0.35);
+    ctx.beginPath();
+    ctx.arc(x + s * 0.5, y + s * 0.4, s * 0.18, 0, Math.PI * 2);
+    ctx.fillStyle = "#6b7080";
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = this.statusLight();
+    ctx.fillRect(x + s * 0.45, y + s * 0.75, s * 0.1, s * 0.08);
+  }
+}
+
+// Cuts any roll into SHEETS_PER_ROLL sheets of the same kind: a blank roll into Blank Sheets
+// (for a Sheet-Fed Press), a printed roll into Printed Sheets of its job. Its 2 sheets/s
 // output needs an Express Belt.
 class Sheeter extends Converter {
   constructor(at) {
     super("Sheeter", {
-      description: `Cuts a Printed Roll into ${SHEETS_PER_ROLL} Printed Sheets of the same job. Needs an Express Belt out to keep up.`,
+      description: `Cuts any roll into ${SHEETS_PER_ROLL} sheets: blank rolls into Blank Sheets, printed rolls into Printed Sheets of the same job. Needs an Express Belt out to keep up.`,
       upkeep: 15,
       ...at,
       cols: 3,
       rows: 2,
       accent: "#3fb8a8",
-      input: PRINTED_ROLLS,
-      output: PRINTED_SHEETS,
+      input: [HAND.BLANK_ROLL, ...PRINTED_ROLLS],
+      output: [HAND.BLANK_SHEET, ...PRINTED_SHEETS],
       seconds: SHEETER_SECONDS,
       yields: SHEETS_PER_ROLL,
       capacity: 5,
@@ -152,9 +206,9 @@ class Sheeter extends Converter {
     });
   }
 
-  // Sheets keep the job of the roll they were cut from.
+  // Sheets keep the state of the roll they were cut from.
   outputFor(roll) {
-    return jobOf(roll).sheet;
+    return roll === HAND.BLANK_ROLL ? HAND.BLANK_SHEET : jobOf(roll).sheet;
   }
 
   drawIcon(ctx, x, y, s) {
@@ -174,18 +228,18 @@ class Sheeter extends Converter {
   }
 }
 
-// Saddle-stitch binder. Folds and stitches sheets into books.
+// Saddle-stitch binder. Folds and stitches sheets into Zines, four times as fast as an Auto Stapler.
 class SaddleStitcher extends Converter {
   constructor(at) {
     super("Saddle Stitcher", {
-      description: "Binds saddle-stitch Printed Sheets into Saddle-Stitched Books, one a second.",
+      description: "Folds and stitches saddle-stitch Printed Sheets into Zines, two a second.",
       upkeep: 20,
       ...at,
       cols: 3,
       rows: 2,
       accent: "#e5703a",
       input: HAND.SADDLE_SHEET,
-      output: HAND.BOOK,
+      output: HAND.ZINE,
       seconds: STITCHER_SECONDS,
       capacity: PRODUCTION_TRAY_SIZE,
     });
@@ -193,7 +247,7 @@ class SaddleStitcher extends Converter {
 
   drawIcon(ctx, x, y, s) {
     ctx.strokeStyle = INK;
-    // Saddle (an upside-down V) with a book draped over it
+    // Saddle (an upside-down V) with a zine draped over it
     ctx.beginPath();
     ctx.moveTo(x + s * 0.1, y + s * 0.85);
     ctx.lineTo(x + s * 0.5, y + s * 0.45);
@@ -212,8 +266,8 @@ class SaddleStitcher extends Converter {
 }
 
 // Shared by the Perfect Binder and the Finisher. Two IN trays stacked on the left, COVER on
-// top and GUTS below. It waits until both parts are there, then binds one Perfect-Bound Book. Subclasses say where the guts come from.
-class BookBinder extends Machine {
+// top and GUTS below. It waits until both parts are there, then binds one Perfect-Bound Zine. Subclasses say where the guts come from.
+class ZineBinder extends Machine {
   constructor(title, { seconds, gutsTray, ...rest }) {
     super(title, {
       ...rest,
@@ -221,7 +275,7 @@ class BookBinder extends Machine {
         { label: "COVER", tray: new Tray({ item: HAND.COVER_SHEET, capacity: PRODUCTION_TRAY_SIZE }) },
         { label: "GUTS", tray: gutsTray },
       ],
-      outTray: new Tray({ item: HAND.PERFECT_BOOK, capacity: PRODUCTION_TRAY_SIZE }),
+      outTray: new Tray({ item: HAND.PERFECT_ZINE, capacity: PRODUCTION_TRAY_SIZE }),
     });
     this.seconds = seconds;
     this.binding = false;
@@ -242,9 +296,9 @@ class BookBinder extends Machine {
   get gutsTray() { return this.inputs[1].tray; }
 
   // Override these two for a different guts source.
-  hasGuts() { return this.gutsTray.count >= GUTS_PER_BOOK; }
+  hasGuts() { return this.gutsTray.count >= GUTS_PER_ZINE; }
   takeGuts() {
-    for (let i = 0; i < GUTS_PER_BOOK; i++) this.gutsTray.take();
+    for (let i = 0; i < GUTS_PER_ZINE; i++) this.gutsTray.take();
   }
 
   // What it's waiting on, or null when it has a full set: "COVER", "GUTS" or "ROOM".
@@ -264,11 +318,11 @@ class BookBinder extends Machine {
     const waiting = this.waitingOn();
     if (waiting === "COVER") return "Waiting for a Cover sheet.";
     if (waiting === "GUTS") return this.gutsHint();
-    if (waiting === "ROOM") return "Out tray is full. Collect the books.";
+    if (waiting === "ROOM") return "Out tray is full. Collect the zines.";
     return "Binding.";
   }
 
-  gutsHint() { return `Waiting for Guts sheets (needs ${GUTS_PER_BOOK} per book).`; }
+  gutsHint() { return `Waiting for Guts sheets (needs ${GUTS_PER_ZINE} per zine).`; }
 
   update(dt, game) {
     super.update(dt, game);
@@ -276,7 +330,7 @@ class BookBinder extends Machine {
       this.elapsed += dt;
       if (this.elapsed < this.seconds) return;
       this.binding = false;
-      this.outTray.put(HAND.PERFECT_BOOK);
+      this.outTray.put(HAND.PERFECT_ZINE);
       this.elapsed -= this.seconds; // carry the leftover so the rate stays exact
     } else {
       this.elapsed = 0;
@@ -296,10 +350,10 @@ class BookBinder extends Machine {
 }
 
 // Perfect binder: cover sheets + guts sheets.
-class PerfectBinder extends BookBinder {
+class PerfectBinder extends ZineBinder {
   constructor(at) {
     super("Perfect Binder", {
-      description: `Binds 1 Cover sheet and ${GUTS_PER_BOOK} Guts sheets into a Perfect-Bound Book every ${BIND_SECONDS} seconds.`,
+      description: `Binds 1 Cover sheet and ${GUTS_PER_ZINE} Guts sheets into a Perfect-Bound Zine, one a second.`,
       upkeep: 25,
       ...at,
       cols: 4,
@@ -312,21 +366,21 @@ class PerfectBinder extends BookBinder {
 
   drawIcon(ctx, x, y, s) {
     ctx.lineWidth = 2;
-    // Clamp over a glued book block
+    // Clamp over a glued block of pages
     ctx.strokeStyle = INK;
     ctx.fillStyle = "#b8b8c4";
     ctx.fillRect(x, y + s * 0.05, s, s * 0.22);
     ctx.strokeRect(x, y + s * 0.05, s, s * 0.22);
-    drawItem(ctx, HAND.PERFECT_BOOK, x + s * 0.15, y + s * 0.3, s * 0.7);
+    drawItem(ctx, HAND.PERFECT_ZINE, x + s * 0.15, y + s * 0.3, s * 0.7);
   }
 }
 
 // Inline finisher: cover sheets + a whole guts roll, no sheeter needed.
 // It unrolls one guts roll at a time into SHEETS_PER_ROLL sheets' worth of guts.
-class Finisher extends BookBinder {
+class Finisher extends ZineBinder {
   constructor(at) {
     super("Finisher", {
-      description: `Binds Cover sheets with a whole Guts roll, so no sheeter is needed. Makes a Perfect-Bound Book every second.`,
+      description: `Binds Cover sheets with a whole Guts roll, so no sheeter is needed. Makes Perfect-Bound Zines two a second, the fastest way.`,
       upkeep: 50,
       ...at,
       cols: 4,
@@ -348,15 +402,15 @@ class Finisher extends BookBinder {
   }
 
   hasGuts() {
-    return this.gutsLeft >= GUTS_PER_BOOK || this.gutsTray.count > 0;
+    return this.gutsLeft >= GUTS_PER_ZINE || this.gutsTray.count > 0;
   }
 
   takeGuts() {
-    if (this.gutsLeft < GUTS_PER_BOOK) {
+    if (this.gutsLeft < GUTS_PER_ZINE) {
       this.gutsTray.take();
       this.gutsLeft += SHEETS_PER_ROLL;
     }
-    this.gutsLeft -= GUTS_PER_BOOK;
+    this.gutsLeft -= GUTS_PER_ZINE;
   }
 
   gutsHint() { return "Waiting for a Guts roll. Send one straight from a press set to Guts."; }
@@ -375,26 +429,26 @@ class Finisher extends BookBinder {
   drawIcon(ctx, x, y, s) {
     ctx.lineWidth = 2;
     ctx.strokeStyle = INK;
-    // Guts roll feeding a trimmer, book coming out
+    // Guts roll feeding a trimmer, zine coming out
     drawItem(ctx, HAND.GUTS_ROLL, x, y + s * 0.05, s * 0.45);
     ctx.fillStyle = "#b8b8c4";
     ctx.fillRect(x + s * 0.4, y + s * 0.15, s * 0.2, s * 0.6);
     ctx.strokeRect(x + s * 0.4, y + s * 0.15, s * 0.2, s * 0.6);
-    drawItem(ctx, HAND.PERFECT_BOOK, x + s * 0.6, y + s * 0.4, s * 0.4);
+    drawItem(ctx, HAND.PERFECT_ZINE, x + s * 0.6, y + s * 0.4, s * 0.4);
   }
 }
 
-// Stacks BOOKS_PER_PALLET books of one kind and stretch-wraps them into one pallet.
+// Stacks ZINES_PER_PALLET zines of one kind and stretch-wraps them into one pallet.
 class Palletizer extends Machine {
   constructor(at) {
     super("Palletizer", {
-      description: `Wraps ${BOOKS_PER_PALLET} books of one kind into a pallet.`,
+      description: `Wraps ${ZINES_PER_PALLET} zines of one kind into a pallet.`,
       upkeep: 10,
       ...at,
       cols: 3,
       rows: 2,
       accent: "#a0784a",
-      inTray: new Tray({ kinds: PALLETS.map((p) => p.book), capacity: BOOKS_PER_PALLET * 2 }),
+      inTray: new Tray({ kinds: PALLETS.map((p) => p.zine), capacity: ZINES_PER_PALLET * 2 }),
       outTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 3 }),
     });
     this.wrapping = false;
@@ -420,7 +474,7 @@ class Palletizer extends Machine {
 
   bodyHint() {
     if (this.outTray.isFull()) return "Out tray is full. Send pallets to a Truck Dock.";
-    return `Wraps a pallet once it has ${BOOKS_PER_PALLET} books of one kind (${this.inTray.count} now).`;
+    return `Wraps a pallet once it has ${ZINES_PER_PALLET} zines of one kind (${this.inTray.count} now).`;
   }
 
   update(dt, game) {
@@ -432,10 +486,10 @@ class Palletizer extends Machine {
       this.outTray.put(this.making);
     }
     this.elapsed = 0;
-    if (this.inTray.count < BOOKS_PER_PALLET) return;
+    if (this.inTray.count < ZINES_PER_PALLET) return;
     const pallet = palletFor(this.inTray.item);
     if (!this.outTray.fits(pallet) || this.outTray.isFull()) return;
-    for (let i = 0; i < BOOKS_PER_PALLET; i++) this.inTray.take();
+    for (let i = 0; i < ZINES_PER_PALLET; i++) this.inTray.take();
     this.making = pallet;
     this.wrapping = true;
   }

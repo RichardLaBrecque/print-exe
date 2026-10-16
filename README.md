@@ -2,7 +2,7 @@
 
 A small factory-building game about running a print shop, dressed up as Windows 95.
 
-You start with one desktop printer and a stapler, making zines by hand. You end with roll-fed presses, sheeters, binders and trucks hauling pallets of books. There's no character to walk around: you tap, drag and build.
+You start with one desktop printer and a stapler, making zines by hand. You end with roll-fed presses, sheeters, binders and trucks hauling pallets of zines. There's no character to walk around: you tap, drag and build.
 
 **Play it:** https://richardlabrecque.github.io/print-exe/
 
