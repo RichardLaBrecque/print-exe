@@ -35,6 +35,10 @@ const BELT_TYPES = {
 };
 
 const Save = {
+  // Set once New Shop or Open Save File has replaced the autosave and is reloading. The page's
+  // pagehide/visibilitychange autosave would otherwise write the old shop back over it.
+  leaving: false,
+
   // Everything needed to rebuild the shop, as plain JSON-ready data.
   snapshot(game) {
     // A machine or belt mid-drag is saved where it was picked up from
@@ -113,7 +117,7 @@ const Save = {
   // Autosave ------------------------------------------------------------------------------
 
   write(game) {
-    if (game.bankrupt) return;
+    if (game.bankrupt || this.leaving) return;
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(this.snapshot(game)));
     } catch {
@@ -170,12 +174,14 @@ const Save = {
   async open(file, game) {
     const data = JSON.parse(await file.text());
     this.restore({ ...game, ledger: {}, licenses: new Set() }, data); // throws if it isn't a usable save
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data)); // throws if storage is blocked; nothing changes
+    this.leaving = true;
     location.reload();
   },
 
   // Forget the autosave and start fresh.
   newShop() {
+    this.leaving = true;
     this.clear();
     location.reload();
   },
