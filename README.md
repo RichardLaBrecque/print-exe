@@ -41,3 +41,5 @@ Plain JavaScript files loaded in order by `index.html`:
 | `catalog.js` | What the Shop sells, and the licenses |
 | `ui.js` | Taskbar, Start menu and Win95 windows |
 | `game.js` | Game state, money, camera, input and the render loop |
+
+When releasing a change, bump the `?v=` on the script tags in `index.html` so browsers load the new files.
