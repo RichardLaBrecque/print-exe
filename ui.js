@@ -102,7 +102,8 @@ const UI = {
     this.toolChipEl = document.getElementById("tool-chip");
     this.toolButtons = [...this.menuEl.querySelectorAll("button[data-tool]")];
     this.shownTool = null;
-    this.shownLicenses = -1;
+    this.shownUnlocks = null;
+    this.beltsLockedEl = document.getElementById("belts-locked");
 
     document.getElementById("dialog-ok").addEventListener("click", () => {
       document.getElementById("dialog").hidden = true;
@@ -322,9 +323,27 @@ const UI = {
     if (!this.ledgerEl.hidden) this.renderLedger(game);
     if (!this.shopEl.hidden) this.renderShop(game);
 
-    if (game.licenses.size !== this.shownLicenses) {
-      this.shownLicenses = game.licenses.size;
-      for (const el of this.menuEl.querySelectorAll("[data-license]")) el.hidden = !game.licenses.has(el.dataset.license);
+    // Menu items that need a license, or belts unlocked, stay hidden until then
+    const unlockKey = `${game.licenses.size}:${game.beltsUnlocked}`;
+    if (unlockKey !== this.shownUnlocks) {
+      if (this.shownUnlocks !== null && game.beltsUnlocked && !this.shownUnlocks.endsWith("true")) {
+        this.showDialog(
+          "Belts unlocked",
+          "Belts are in the Start menu. Machines take and give items at the triangles on their trays: " +
+            "point a belt into an IN triangle, and lead one away from an OUT triangle. " +
+            "Tap a triangle with the Belt tool to turn it.",
+        );
+      }
+      this.shownUnlocks = unlockKey;
+      for (const el of this.menuEl.querySelectorAll("[data-license], [data-needs]")) {
+        const licensed = !el.dataset.license || game.licenses.has(el.dataset.license);
+        const beltsReady = !el.dataset.needs || game.beltsUnlocked;
+        el.hidden = !(licensed && beltsReady);
+      }
+      this.menuEl.querySelector('[data-locked="belts"]').hidden = game.beltsUnlocked;
+    }
+    if (!game.beltsUnlocked) {
+      setText(this.beltsLockedEl, `Belts: sell ${BELTS_UNLOCK_ZINES} Zines (${game.zinesSold}/${BELTS_UNLOCK_ZINES})`);
     }
 
     if (game.tool !== this.shownTool) {

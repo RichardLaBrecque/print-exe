@@ -9,6 +9,11 @@ const RENT_PER_SQUARE = 0.25; // $ per floor square per minute
 const BILL_SECONDS = 60;
 const FIRST_BILL_SECONDS = 120; // a little longer to get the first loop going
 const GRACE_SECONDS = 60;
+
+// Belts start locked: sell this many Zines by hand first.
+const BELTS_UNLOCK_ZINES = 20;
+const PORT_HIGHLIGHT_SECONDS = 15; // how long ports pulse after belts unlock
+const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
 const EXPAND_STEP = 2; // rows or columns added per expansion
 const TILE_PRICE = 3; // cost of each new floor square
 
@@ -89,10 +94,13 @@ const Game = {
   graceLeft: null, // seconds left to get back above $0, or null when not overdue
   bankrupt: false,
   peakIncome: 0, // best income per second seen, for the bankruptcy screen
+  zinesSold: 0,
+  beltsUnlocked: false,
+  portHighlightUntil: 0, // game time until which ports pulse to show where belts connect
   floor: { cols: 8, rows: 10 },
   machines: [
-    new PaperSupply({ col: 1, row: 1 }),
-    new DesktopPrinter({ col: 5, row: 1 }),
+    new PaperSupply({ col: 0, row: 1 }),
+    new DesktopPrinter({ col: 4, row: 1 }),
     new ManualStapler({ col: 4, row: 4 }),
     new Outbox({ col: 1, row: 4 }),
     new TrashCan({ col: 1, row: 7 }),
@@ -235,7 +243,17 @@ const Game = {
 
   // Belts ------------------------------------------------------------------------
 
+  unlockBelts() {
+    this.beltsUnlocked = true;
+    this.portHighlightUntil = this.time + PORT_HIGHLIGHT_SECONDS;
+  },
+
   setTool(tool) {
+    if (BELT_TOOLS.includes(tool) && !this.beltsUnlocked) {
+      const left = BELTS_UNLOCK_ZINES - this.zinesSold;
+      this.showTip(`Belts unlock after you sell ${left} more Zine${left === 1 ? "" : "s"}.`, Camera.x, Camera.y);
+      return;
+    }
     if (tool === "express" && !this.licenses.has("production")) {
       this.showTip(`Express Belts need the ${LICENSES.production.name} license.`, Camera.x, Camera.y);
       return;
@@ -294,27 +312,35 @@ const Game = {
 
   // Direction for a new piece at (col, row): if a machine's OUT tray is next to it, face away
   // from the tray so the piece pulls from it straight away. Otherwise the last direction used.
-  // In front of a chute, carry on the way the chute points.
+  // In front of an OUT port, carry on the way it points. In front of an IN port, point into it.
   placementDir(col, row) {
-    const chute = this.machines.find((m) => {
-      if (m.chuteDir == null) return false;
-      const target = m.chuteTarget();
-      return target.col === col && target.row === row;
-    });
-    if (chute) return chute.chuteDir;
+    for (const m of this.machines) {
+      for (const kind of ["out", "in"]) {
+        if (!m.port(kind)) continue;
+        const outside = m.portOutside(kind);
+        if (outside.col !== col || outside.row !== row) continue;
+        return kind === "out" ? m.port(kind).dir : (m.port(kind).dir + 2) % 4;
+      }
+    }
 
     const order = [this.beltDir, ...[0, 1, 2, 3].filter((dir) => dir !== this.beltDir)];
     const away = order.find((dir) => this.trayAt(col - DIRS[dir].x, row - DIRS[dir].y, "out")?.pullable);
     return away ?? this.beltDir;
   },
 
-  // The machine whose chute is on this square, if any.
-  chuteAt(col, row) {
-    return this.machines.find((m) => {
-      if (m.chuteDir == null) return false;
-      const tile = m.chuteTile();
-      return tile.col === col && tile.row === row;
-    });
+  // The machine and port a Belt tool tap on (col, row) would turn, if any.
+  portAt(col, row) {
+    const machine = this.machineAtTile(col, row);
+    const kind = machine?.portKindAt(col, row);
+    return kind ? { machine, kind } : null;
+  },
+
+  // The IN tray on (col, row) that will take an item handed over from `from`, if any.
+  // A machine with an IN port only takes from the square its port faces.
+  inTrayFrom(col, row, from) {
+    const tray = this.trayAt(col, row, "in");
+    if (!tray) return null;
+    return this.machineAtTile(col, row).takesInFrom(col, row, from) ? tray : null;
   },
 
   // Splitter tool tap: rotate a splitter, swap a belt for one, or place one on an empty square.
@@ -578,8 +604,8 @@ const Game = {
 
     const { col, row } = this.tileAt(wx, wy);
     if (this.tool === "belt" || this.tool === "express") {
-      const chuteOwner = this.chuteAt(col, row);
-      if (chuteOwner) chuteOwner.rotateChute();
+      const port = this.portAt(col, row);
+      if (port) port.machine.rotatePort(port.kind);
       else this.tapBelt(col, row, wx, wy);
       return;
     }
@@ -681,6 +707,7 @@ const Game = {
     for (const b of this.belts.values()) b.update(dt);
     moveItems(this);
     this.updateFinances(dt);
+    if (!this.beltsUnlocked && this.zinesSold >= BELTS_UNLOCK_ZINES) this.unlockBelts();
     for (const f of this.floaters) f.age += dt;
     this.floaters = this.floaters.filter((f) => f.age < (f.kind === "tip" ? 1.6 : 1));
   },

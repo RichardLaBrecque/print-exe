@@ -238,7 +238,7 @@ function outputTarget(game, belt, { col, row, side }) {
     if (!next) return null;
     return { target: next, side, ready: () => next.item === null, give: () => belt.giveToBelt(next) };
   }
-  const tray = game.trayAt(col, row, "in");
+  const tray = game.inTrayFrom(col, row, belt);
   if (tray) return { target: tray, side, ready: () => tray.accepts(belt.item), give: () => belt.giveToTray(tray) };
   return null;
 }

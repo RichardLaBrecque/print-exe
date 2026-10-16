@@ -61,6 +61,8 @@ const Save = {
       nextBillIn: game.nextBillIn,
       graceLeft: game.graceLeft,
       peakIncome: game.peakIncome,
+      zinesSold: game.zinesSold,
+      beltsUnlocked: game.beltsUnlocked,
       beltDir: game.beltDir,
       ledger: {
         ...game.ledger,
@@ -100,6 +102,10 @@ const Save = {
     game.nextBillIn = data.nextBillIn;
     game.graceLeft = data.graceLeft;
     game.peakIncome = data.peakIncome;
+    // Saves from before belts were locked had belts from the start
+    game.zinesSold = data.zinesSold ?? BELTS_UNLOCK_ZINES;
+    game.beltsUnlocked = data.beltsUnlocked ?? true;
+    game.portHighlightUntil = 0;
     game.beltDir = data.beltDir;
     game.ledger = {
       ...data.ledger,

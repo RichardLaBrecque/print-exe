@@ -258,6 +258,17 @@
     #start-menu .key { margin-left: auto; padding-left: 16px; color: #808080; font-size: 11px; }
     #start-menu li button:hover .key { color: #c0c0c0; }
 
+    /* Greyed-out menu line, e.g. belts before they unlock */
+    #start-menu li.locked {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px 0 4px;
+      color: #808080;
+      text-shadow: 1px 1px #fff;
+    }
+
     #start-menu .sep {
       margin: 3px 2px;
       border-top: 1px solid #808080;
@@ -495,6 +506,7 @@
           <li>Pinch or scroll to zoom. Press F to see the whole floor.</li>
           <li>Start menu: belts, splitters, bridges, the Shop and the Ledger.</li>
           <li>Right-click goes back to Select.</li>
+          <li>Belts unlock once you've sold 20 Zines. Machines connect at the triangles on their trays.</li>
           <li>Your shop saves itself in this browser. The Start menu can also save it to a file.</li>
         </ul>
         <p><b>Grow:</b> automate with belts, buy licenses for roll paper and production
@@ -529,10 +541,11 @@
       <div class="banner"><span><b>Print</b>95</span></div>
       <ul>
         <li><button type="button" data-tool="select"><span class="check"></span>Select<span class="key">V</span></button></li>
-        <li><button type="button" data-tool="belt"><span class="check"></span>Belt ($2)<span class="key">B</span></button></li>
-        <li data-license="production"><button type="button" data-tool="express"><span class="check"></span>Express Belt ($6)<span class="key">X</span></button></li>
-        <li><button type="button" data-tool="splitter"><span class="check"></span>Splitter ($10)<span class="key">S</span></button></li>
-        <li><button type="button" data-tool="bridge"><span class="check"></span>Bridge ($8)<span class="key">R</span></button></li>
+        <li data-locked="belts" class="locked" aria-disabled="true"><span class="check"></span><span id="belts-locked">Belts: sell 20 Zines (0/20)</span></li>
+        <li data-needs="belts"><button type="button" data-tool="belt"><span class="check"></span>Belt ($2)<span class="key">B</span></button></li>
+        <li data-license="production" data-needs="belts"><button type="button" data-tool="express"><span class="check"></span>Express Belt ($6)<span class="key">X</span></button></li>
+        <li data-needs="belts"><button type="button" data-tool="splitter"><span class="check"></span>Splitter ($10)<span class="key">S</span></button></li>
+        <li data-needs="belts"><button type="button" data-tool="bridge"><span class="check"></span>Bridge ($8)<span class="key">R</span></button></li>
         <li><button type="button" data-tool="erase"><span class="check"></span>Erase<span class="key">E</span></button></li>
         <li><button type="button" data-tool="upgrade"><span class="check"></span>Upgrade<span class="key">U</span></button></li>
         <li class="sep" role="separator"></li>

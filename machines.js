@@ -127,7 +127,15 @@ class Tray {
 class Machine {
   // Give `inTray` for one input, or `inputs: [{ label, tray }]` for several. Inputs stack
   // down the first column, one share of the rows each, so a belt feeds whichever it points at.
-  constructor(title, { col, row, cols, rows, accent, upkeep = 0, description = "", inTray = null, inputs = null, outTray = null }) {
+  //
+  // `portIn` / `portOut` give the IN or OUT tray a single port instead: one edge of the tray
+  // column, marked with a triangle. An IN port only takes items from the square it faces; an
+  // OUT port pushes an item a second onto the square it faces, and belts can't pull from it.
+  // Hands still use the whole tray. Turn a port with the Belt tool.
+  constructor(title, {
+    col, row, cols, rows, accent, upkeep = 0, description = "",
+    inTray = null, inputs = null, outTray = null, portIn = false, portOut = false,
+  }) {
     this.title = title;
     this.description = description; // one or two sentences for the hover tooltip
     this.upkeep = upkeep; // $ per minute, billed with rent
@@ -138,6 +146,10 @@ class Machine {
     this.accent = accent;
     this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
     this.outTray = outTray;
+    this.inPort = portIn ? this.portEdges("in")[0] : null; // { row, dir }: row offset in the column, facing DIRS[dir]
+    this.outPort = portOut ? this.portEdges("out")[0] : null;
+    if (portOut) outTray.pullable = false;
+    this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.shake = 0;
   }
 
@@ -241,11 +253,18 @@ class Machine {
       col: this.col,
       row: this.row,
       trays: this.allTrays().map((tray) => tray.saveState()),
+      inPort: this.inPort,
+      outPort: this.outPort,
+      portTimer: this.portTimer,
     };
   }
 
+  // Saves from before ports keep each machine's default ports.
   loadState(s) {
     this.allTrays().forEach((tray, i) => tray.loadState(s.trays[i]));
+    if (s.inPort && this.inPort) this.inPort = { ...s.inPort };
+    if (s.outPort && this.outPort) this.outPort = { ...s.outPort };
+    this.portTimer = s.portTimer ?? 0;
   }
 
   allTrays() {
@@ -260,8 +279,119 @@ class Machine {
   // 0..1 to show a progress bar in the body, or null for none.
   progress() { return null; }
 
-  update(dt, _game) {
+  update(dt, game) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
+    if (this.outPort) {
+      this.portTimer = Math.min(1, this.portTimer + dt * BELT_SPEED);
+      if (this.portTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.portTimer = 0;
+    }
+  }
+
+  // Ports -------------------------------------------------------------------------------
+
+  // Every outward edge of the IN (first) or OUT (last) column, in the order a tap turns
+  // through them: the outer side of each tile, plus the top and bottom ends.
+  portEdges(kind) {
+    const side = kind === "in" ? 2 : 0; // left for IN, right for OUT
+    const edges = [];
+    for (let row = 0; row < this.rows; row++) {
+      edges.push({ row, dir: side });
+      if (row === 0) edges.push({ row, dir: 3 });
+      if (row === this.rows - 1) edges.push({ row, dir: 1 });
+    }
+    return edges;
+  }
+
+  port(kind) {
+    return kind === "in" ? this.inPort : this.outPort;
+  }
+
+  // The port's own square on the machine, and the square outside it that it faces.
+  portTile(kind) {
+    return { col: this.col + (kind === "in" ? 0 : this.cols - 1), row: this.row + this.port(kind).row };
+  }
+
+  portOutside(kind) {
+    const tile = this.portTile(kind);
+    const d = DIRS[this.port(kind).dir];
+    return { col: tile.col + d.x, row: tile.row + d.y };
+  }
+
+  rotatePort(kind) {
+    const edges = this.portEdges(kind);
+    const now = this.port(kind);
+    const next = edges[(edges.findIndex((e) => e.row === now.row && e.dir === now.dir) + 1) % edges.length];
+    if (kind === "in") this.inPort = { ...next };
+    else this.outPort = { ...next };
+  }
+
+  // Which port, if any, a Belt tool tap on (col, row) turns: any square of a ported tray column.
+  portKindAt(col, row) {
+    const part = this.partAt((col + 0.5) * TILE, (row + 0.5) * TILE);
+    if (part?.startsWith("in:") && this.inPort) return "in";
+    if (part === "out" && this.outPort) return "out";
+    return null;
+  }
+
+  // An IN port takes items only from the square it faces; other machines take from anywhere.
+  takesInFrom(col, row, from) {
+    if (!this.inPort) return true;
+    const tile = this.portTile("in");
+    const outside = this.portOutside("in");
+    return tile.col === col && tile.row === row && outside.col === from.col && outside.row === from.row;
+  }
+
+  // Hand one item from the OUT port to the belt or IN tray it faces. Returns true if it went.
+  pushOut(game) {
+    const from = this.portTile("out");
+    const { col, row } = this.portOutside("out");
+    const piece = game.beltAt(col, row);
+    if (piece) {
+      const lane = piece.receiverFrom(from.col, from.row);
+      if (!lane || lane.item !== null) return false;
+      lane.receive(this.outTray.take(), 0, from);
+      return true;
+    }
+    const tray = game.inTrayFrom(col, row, from);
+    if (!tray || !tray.accepts(this.outTray.item)) return false;
+    tray.put(this.outTray.take());
+    return true;
+  }
+
+  // A triangle on each port's edge: OUT points out, IN points in. They pulse while
+  // game.portHighlightUntil is ahead, to show where belts connect.
+  drawPorts(ctx, game) {
+    for (const kind of ["in", "out"]) {
+      if (!this.port(kind)) continue;
+      const { col, row } = this.portTile(kind);
+      ctx.save();
+      ctx.translate(col * TILE + TILE / 2, row * TILE + TILE / 2);
+      ctx.rotate((this.port(kind).dir * Math.PI) / 2);
+      if (game.time < game.portHighlightUntil) {
+        const pulse = 0.5 + 0.5 * Math.sin(game.time * 8);
+        ctx.beginPath();
+        ctx.arc(TILE / 2 - 8, 0, 13 + pulse * 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 210, 63, ${0.35 + pulse * 0.4})`;
+        ctx.fill();
+      }
+      ctx.beginPath();
+      if (kind === "out") {
+        ctx.moveTo(TILE / 2 - 2, 0);
+        ctx.lineTo(TILE / 2 - 14, -10);
+        ctx.lineTo(TILE / 2 - 14, 10);
+      } else {
+        ctx.moveTo(TILE / 2 - 14, 0);
+        ctx.lineTo(TILE / 2 - 2, -10);
+        ctx.lineTo(TILE / 2 - 2, 10);
+      }
+      ctx.closePath();
+      ctx.fillStyle = this.accent;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = INK;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // Drawing ------------------------------------------------------------------
@@ -311,6 +441,8 @@ class Machine {
       const r = this.partRect(part);
       if (r && game.tool === "select" && this.canUse(game, part)) drawAnts(ctx, r, this.accent, game.time);
     }
+
+    this.drawPorts(ctx, game);
   }
 
   drawTray(ctx, r, tray, label) {
@@ -508,15 +640,13 @@ function drawItem(ctx, item, x, y, s) {
 // a truck drops it off after a short wait. The IN and OUT trays are the same stock,
 // so you can put paper back. One upgrade adds auto-reorder.
 //
-// With `chute: true` the OUT tray is a one-tile chute instead: belts can't pull from it, and
-// it pushes one item a second onto the single square its arrow points at.
+// With `chute: true` the OUT tray is a single port (see Machine): belts can't pull from it,
+// and it pushes one item a second onto the square its triangle faces.
 class Supply extends Machine {
   constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, rows = 2, chute = false, ...rest }) {
-    const stock = new Tray({ item, capacity, pullable: !chute });
+    const stock = new Tray({ item, capacity });
     stock.count = startStock;
-    super(title, { ...rest, cols: 3, rows, inTray: stock, outTray: stock });
-    this.chuteDir = chute ? 0 : null; // index into DIRS; starts pointing right
-    this.chuteTimer = 0; // 0..1, pushes an item each time it reaches 1
+    super(title, { ...rest, cols: 3, rows, inTray: stock, outTray: stock, portOut: chute });
     this.delivery = delivery; // { amount, price, seconds }
     this.reorderCost = reorderCost;
     this.sample = sample; // free sheets sent when you're broke and out of paper, so you can't get stuck
@@ -531,8 +661,6 @@ class Supply extends Machine {
       pending: this.pending,
       incoming: this.incoming,
       autoReorder: this.autoReorder,
-      chuteDir: this.chuteDir,
-      chuteTimer: this.chuteTimer,
     };
   }
 
@@ -541,8 +669,8 @@ class Supply extends Machine {
     this.pending = s.pending;
     this.incoming = s.incoming;
     this.autoReorder = s.autoReorder;
-    this.chuteDir = s.chuteDir;
-    this.chuteTimer = s.chuteTimer;
+    // Saves from the chute version stored its direction as chuteDir
+    if (!s.outPort && s.chuteDir != null && this.outPort) this.outPort = { row: 0, dir: s.chuteDir };
   }
 
   hasRoomForDelivery() {
@@ -591,46 +719,8 @@ class Supply extends Machine {
     return 1 - this.pending / this.delivery.seconds;
   }
 
-  // The chute's square on the machine (top right) and the square it feeds.
-  chuteTile() {
-    return { col: this.col + this.cols - 1, row: this.row };
-  }
-
-  chuteTarget() {
-    const from = this.chuteTile();
-    const d = DIRS[this.chuteDir];
-    return { col: from.col + d.x, row: from.row + d.y };
-  }
-
-  // Right, down, up: never back into the machine.
-  rotateChute() {
-    const turns = [0, 1, 3];
-    this.chuteDir = turns[(turns.indexOf(this.chuteDir) + 1) % turns.length];
-  }
-
-  // Hand one item to the belt or IN tray in front of the chute. Returns true if it went.
-  pushOut(game) {
-    const from = this.chuteTile();
-    const { col, row } = this.chuteTarget();
-    const piece = game.beltAt(col, row);
-    if (piece) {
-      const lane = piece.receiverFrom(from.col, from.row);
-      if (!lane || lane.item !== null) return false;
-      lane.receive(this.outTray.take(), 0, from);
-      return true;
-    }
-    const tray = game.trayAt(col, row, "in");
-    if (!tray || !tray.accepts(this.outTray.item)) return false;
-    tray.put(this.outTray.take());
-    return true;
-  }
-
   update(dt, game) {
     super.update(dt, game);
-    if (this.chuteDir !== null) {
-      this.chuteTimer = Math.min(1, this.chuteTimer + dt * BELT_SPEED);
-      if (this.chuteTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.chuteTimer = 0;
-    }
     if (this.pending > 0) {
       this.pending = Math.max(0, this.pending - dt);
       if (this.pending === 0) this.inTray.count = Math.min(this.inTray.capacity, this.inTray.count + this.incoming);
@@ -644,27 +734,6 @@ class Supply extends Machine {
     // Order button label, so it's clear the body is tappable
     const label = this.pending > 0 ? "ARRIVING" : this.autoReorder ? "AUTO" : `ORDER ${money(this.delivery.price)}`;
     this.drawBodyLabel(ctx, r, label, INK);
-  }
-
-  // An arrow on the chute's outer edge, pointing where it feeds.
-  draw(ctx, game) {
-    super.draw(ctx, game);
-    if (this.chuteDir === null) return;
-    const { col, row } = this.chuteTile();
-    ctx.save();
-    ctx.translate(col * TILE + TILE / 2, row * TILE + TILE / 2);
-    ctx.rotate((this.chuteDir * Math.PI) / 2);
-    ctx.beginPath();
-    ctx.moveTo(TILE / 2 - 2, 0);
-    ctx.lineTo(TILE / 2 - 14, -10);
-    ctx.lineTo(TILE / 2 - 14, 10);
-    ctx.closePath();
-    ctx.fillStyle = this.accent;
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = INK;
-    ctx.stroke();
-    ctx.restore();
   }
 
   // A stack of whatever this supply holds.
@@ -785,6 +854,8 @@ class DesktopPrinter extends Converter {
       description: `Prints Blank Sheets into saddle-stitch Printed Sheets, one every ${PRINT_SECONDS} seconds.`,
       upkeep: 5,
       ...at,
+      portIn: true,
+      portOut: true,
       cols: 3,
       rows: 2,
       accent: "#9b8cff",
@@ -819,6 +890,8 @@ class ManualStapler extends Machine {
       description: "Tap the middle to staple a saddle-stitch Printed Sheet into a Zine.",
       upkeep: 2,
       ...at,
+      portIn: true,
+      portOut: true,
       cols: 3,
       rows: 2,
       accent: "#ff7a7a",
@@ -912,6 +985,7 @@ class Outbox extends Machine {
       description: `Sells Zines for $${ZINE_PRICE} each.`,
       upkeep: 2,
       ...at,
+      portIn: true,
       cols: 2,
       rows: 2,
       accent: "#f2b866",
@@ -950,6 +1024,7 @@ class Outbox extends Machine {
     this.elapsed = 0;
     this.inTray.take();
     this.shipped += 1;
+    game.zinesSold += 1;
     game.earn(ZINE_PRICE, "Zine sold");
     const { x, y, w } = this.rect;
     game.floatText(`+$${ZINE_PRICE}`, x + w / 2, y);
