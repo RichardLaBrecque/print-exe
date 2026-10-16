@@ -102,7 +102,7 @@ const Game = {
     new PaperSupply({ col: 0, row: 1 }),
     new DesktopPrinter({ col: 4, row: 1 }),
     new ManualStapler({ col: 4, row: 4 }),
-    new Outbox({ col: 1, row: 4 }),
+    new Outbox({ col: 0, row: 4 }),
     new TrashCan({ col: 1, row: 7 }),
   ],
   belts: new Map(), // tileKey -> Belt
@@ -465,6 +465,7 @@ const Game = {
   // True when the machine fits on the floor at (col, row) without overlapping another or a belt.
   canPlace(machine, col, row) {
     if (col < 0 || row < 0) return false;
+    if (machine.wallOnly && col !== 0 && row !== 0) return false;
     if (col + machine.cols > this.floor.cols || row + machine.rows > this.floor.rows) return false;
     for (const belt of this.belts.values()) {
       const inside = belt.col >= col && belt.col < col + machine.cols && belt.row >= row && belt.row < row + machine.rows;
@@ -524,6 +525,7 @@ const Game = {
     this.spend(entry.price, `Bought ${entry.name}`);
     machine.col = spot.col;
     machine.row = spot.row;
+    this.turnPortsInward(machine);
     machine.shake = 0.4; // wiggle so you spot where it landed
     this.machines.push(machine);
     const { x, y, w } = machine.rect;
@@ -586,10 +588,26 @@ const Game = {
   endMove() {
     const { machine, from, valid } = this.moving;
     if (!valid) {
+      if (machine.wallOnly && machine.col !== 0 && machine.row !== 0) {
+        const { x, y, w } = machine.rect;
+        this.showTip(`${machine.title} must go against the top or left wall.`, x + w / 2, y);
+      }
       machine.col = from.col;
       machine.row = from.row;
     }
+    this.turnPortsInward(machine);
     this.moving = null;
+  },
+
+  // Turn any port that faces off the floor (into a wall) to the next edge that faces the floor.
+  turnPortsInward(machine) {
+    for (const port of machine.ports) {
+      for (let i = 0; i < machine.portEdges(port.kind).length; i++) {
+        const outside = machine.portOutside(port);
+        if (this.inFloor(outside.col, outside.row)) break;
+        machine.rotatePort(port);
+      }
+    }
   },
 
   // Taps -------------------------------------------------------------------------
@@ -1239,6 +1257,7 @@ function frame(now) {
 
 // Pick up the autosaved shop, if there is one, before the first frame.
 const restored = Save.read(Game);
+for (const machine of Game.machines) Game.turnPortsInward(machine);
 
 UI.init({
   onTool: (tool) => Game.setTool(tool),

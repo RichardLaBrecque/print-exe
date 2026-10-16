@@ -134,9 +134,12 @@ class Machine {
   // column, marked with a triangle. An IN port only takes items from the square it faces; an
   // OUT port pushes an item a second onto the square it faces, and belts can't pull from it.
   // Hands still use the whole tray. Turn a port with the Belt tool.
+  //
+  // `wallOnly` machines (Outbox, Truck Dock) ship goods out of the building, so they must
+  // touch the top or left wall. The floor only grows right and down, so those walls never move.
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "",
-    inTray = null, inputs = null, outTray = null, portIn = false, portOut = false,
+    inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, wallOnly = false,
   }) {
     this.title = title;
     this.description = description; // one or two sentences for the hover tooltip
@@ -146,6 +149,7 @@ class Machine {
     this.cols = cols;
     this.rows = rows;
     this.accent = accent;
+    this.wallOnly = wallOnly;
     this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
     this.outTray = outTray;
     // { kind: "in" | "out", row, dir }: row offset in that tray column, facing DIRS[dir]
@@ -1015,6 +1019,7 @@ class Outbox extends Machine {
       upkeep: 2,
       ...at,
       portIn: true,
+      wallOnly: true,
       cols: 2,
       rows: 2,
       accent: "#f2b866",

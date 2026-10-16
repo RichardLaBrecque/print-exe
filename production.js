@@ -507,6 +507,7 @@ class TruckDock extends Machine {
       description: `Loads ${PALLETS_PER_TRUCK} pallets onto a truck and gets paid when it delivers.`,
       upkeep: 20,
       ...at,
+      wallOnly: true,
       cols: 3,
       rows: 3,
       accent: "#6b7080",
