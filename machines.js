@@ -142,7 +142,8 @@ class Machine {
   // column, marked with a triangle. With several inputs, each gets its own IN port, which stays
   // beside that input's rows. An IN port only takes items from the square it faces; an OUT port
   // pushes up to `portRate` items a second onto the square it faces, and belts can't pull from
-  // it. Hands still use the whole tray. Turn a port with the Belt tool.
+  // it. Hands still use the whole tray. Turn a port with the Belt tool. Ports stay hidden and
+  // OUT ports don't push until belts unlock, since nothing can use them before then.
   //
   // `wallOnly` machines (Outbox, Truck Dock and the paper supplies) take deliveries in or ship
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
@@ -313,7 +314,7 @@ class Machine {
   update(dt, game) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
     if (this.jams) this.jamSeconds = this.outTray.isFull() ? this.jamSeconds + dt : 0;
-    if (this.outPort) {
+    if (this.outPort && game.beltsUnlocked) {
       this.portTimer = Math.min(1, this.portTimer + dt * this.portRate);
       if (this.portTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.portTimer = 0;
     }
@@ -476,9 +477,10 @@ class Machine {
     return true;
   }
 
-  // A triangle on each port's edge: OUT points out, IN points in. They pulse while
-  // game.portHighlightUntil is ahead, to show where belts connect.
+  // A triangle on each port's edge: OUT points out, IN points in. Hidden until belts unlock,
+  // then they pulse while game.portHighlightUntil is ahead, to show where belts connect.
   drawPorts(ctx, game) {
+    if (!game.beltsUnlocked) return;
     for (const port of this.ports) {
       const { kind } = port;
       const { col, row } = this.portTile(port);
