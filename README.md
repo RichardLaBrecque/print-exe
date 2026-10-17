@@ -1,6 +1,6 @@
 # Print.exe
 
-A small factory-building game about running a print shop, dressed up as Windows 95.
+A small factory-building game about running a print shop, dressed up as your favorite mid-90s operating system.
 
 You start with one desktop printer and a stapler, making zines by hand. You end with roll-fed presses, sheeters, binders and trucks hauling pallets of zines. There's no character to walk around: you tap, drag and build.
 

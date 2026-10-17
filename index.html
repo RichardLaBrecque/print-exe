@@ -67,12 +67,8 @@
       border: 0;
     }
 
-    #start .logo {
-      display: grid;
-      grid-template-columns: 6px 6px;
-      gap: 1px;
-    }
-    #start .logo i { width: 6px; height: 6px; display: block; }
+    /* Printer's registration mark, a little off-register so the cyan and magenta show */
+    #start .logo { display: block; flex: none; }
 
     .panel {
       height: 26px;
@@ -460,8 +456,8 @@
   <div id="bsod" hidden>
     <div class="bsod-box">
       <p class="bsod-title"><span>Print95</span></p>
-      <p>A fatal exception 0E has occurred at 0028:C0011E36 in VXD PRINTSHOP(01).
-        Your shop has gone bankrupt and the current print run will be terminated.</p>
+      <p>PRINTSHOP.EXE has stopped: cash stayed below $0 for a minute.
+        Your shop has gone bankrupt and the current print run has been cancelled.</p>
       <ul>
         <li>Time in business: <span id="bsod-time"></span></li>
         <li>Total earned: <span id="bsod-earned"></span></li>
@@ -600,10 +596,12 @@
     </div>
 
     <button id="start" class="raised" type="button">
-      <span class="logo">
-        <i style="background:#ff0000"></i><i style="background:#00a000"></i>
-        <i style="background:#0000ff"></i><i style="background:#ffd800"></i>
-      </span>
+      <svg class="logo" viewBox="0 0 15 15" width="15" height="15" aria-hidden="true">
+        <circle cx="6.5" cy="7.5" r="4.5" fill="none" stroke="#00b7eb" stroke-width="1.5"/>
+        <circle cx="8.5" cy="7.5" r="4.5" fill="none" stroke="#ff00a0" stroke-width="1.5"/>
+        <circle cx="7.5" cy="7.5" r="4.5" fill="none" stroke="#000" stroke-width="1.5"/>
+        <path d="M7.5 0v15M0 7.5h15" stroke="#000"/>
+      </svg>
       Start
     </button>
     <button id="tool-chip" class="pressed" type="button" title="Back to Select" hidden></button>
