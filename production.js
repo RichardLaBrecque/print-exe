@@ -1,9 +1,8 @@
 // Tier 2: production equipment.
 //
-// Presses: a Roll Press prints rolls for any job (Saddle-Stitch, Cover or Guts). A Sheet-Fed
-// Press prints sheets, but only Saddle-Stitch and Cover: guts must be roll fed. A Sheeter cuts
-// any roll, blank or printed, into SHEETS_PER_ROLL sheets of the same kind, so blank rolls can
-// feed a Sheet-Fed Press.
+// Presses: a Roll Press prints rolls and a Sheet-Fed Press prints sheets, both for any job
+// (Saddle-Stitch, Cover or Guts). A Sheeter cuts any roll, blank or printed, into
+// SHEETS_PER_ROLL sheets of the same kind, so blank rolls can feed a Sheet-Fed Press.
 //
 // Binding:
 //   Saddle Stitcher: saddle-stitch sheets -> Zines, 4x an Auto Stapler.
@@ -13,7 +12,8 @@
 // Ratios, built around belts (1/s) and Express Belts (2/s):
 //   Roll Press 1 roll / 5 s -> Sheeter 2 sheets/s (Express out) -> 1 Saddle Stitcher (2/s).
 //   Sheet-Fed Press 1 sheet/s, so 2 of them also feed a Saddle Stitcher.
-//   Perfect Binder (1/s): 1 Guts Roll Press + Sheeter (2 guts/s) and 1 Sheet-Fed Cover press.
+//   Perfect Binder (1/s): 2 guts/s from 1 Guts Roll Press + Sheeter or 2 Sheet-Fed Guts presses,
+//   and 1 Sheet-Fed Cover press.
 //   Finisher (2/s): 2 Guts Roll Presses (a roll every 2.5 s between them) and 2 covers/s.
 // Rolls can't be carried by hand (see canCarry), so tier 2 runs on belts.
 //
@@ -155,12 +155,11 @@ class RollPress extends Press {
   }
 }
 
-// Sheet-fed press: prints Blank Sheets one at a time. Saddle-Stitch or Cover only;
-// guts must be roll fed.
+// Sheet-fed press: prints Blank Sheets one at a time, for any job.
 class SheetFedPress extends Press {
   constructor(at) {
     super("Sheet-Fed Press", {
-      description: "Prints a Blank Sheet a second for its job: Saddle-Stitch or Cover (guts must be roll fed). Tap the middle to switch jobs.",
+      description: "Prints a Blank Sheet a second for its job: Saddle-Stitch, Cover or Guts. Tap the middle to switch jobs.",
       upkeep: 30,
       ...at,
       cols: 4,
@@ -170,7 +169,7 @@ class SheetFedPress extends Press {
       portRate: EXPRESS_SPEED,
       accent: "#7e57c2",
       input: HAND.BLANK_SHEET,
-      jobs: [JOBS[0], JOBS[1]],
+      jobs: JOBS,
       prints: "sheet",
       seconds: SHEET_PRESS_SECONDS,
       capacity: PRODUCTION_TRAY_SIZE,
