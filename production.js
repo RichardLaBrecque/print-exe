@@ -20,6 +20,10 @@
 // Production machines have IN and OUT triangles like desktop ones (see Machine). Their OUT
 // triangles push at Express Belt speed, since the Sheeter, Saddle Stitcher and Finisher make
 // 2 items a second; the binders get one IN triangle each for COVER and GUTS.
+//
+// Jams: every machine here with an OUT tray pays more upkeep while that tray stays full. After
+// 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds to 4x (see
+// JAM_GRACE_SECONDS), so a backed-up line costs money.
 
 const ROLL_PRESS_SECONDS = 5;
 const SHEET_PRESS_SECONDS = 1;
@@ -125,6 +129,7 @@ class RollPress extends Press {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#5b8def",
       input: HAND.BLANK_ROLL,
       jobs: JOBS,
@@ -167,6 +172,7 @@ class SheetFedPress extends Press {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#7e57c2",
       input: HAND.BLANK_SHEET,
       jobs: JOBS,
@@ -209,6 +215,7 @@ class Sheeter extends Converter {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#3fb8a8",
       input: [HAND.BLANK_ROLL, ...PRINTED_ROLLS],
       output: [HAND.BLANK_SHEET, ...PRINTED_SHEETS],
@@ -253,6 +260,7 @@ class SaddleStitcher extends Converter {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#e5703a",
       input: HAND.SADDLE_SHEET,
       output: HAND.ZINE,
@@ -377,6 +385,7 @@ class PerfectBinder extends ZineBinder {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#e5703a",
       seconds: BIND_SECONDS,
       gutsTray: new Tray({ item: HAND.GUTS_SHEET, capacity: PRODUCTION_TRAY_SIZE * 2 }),
@@ -407,6 +416,7 @@ class Finisher extends ZineBinder {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#c2185b",
       seconds: FINISH_SECONDS,
       gutsTray: new Tray({ item: HAND.GUTS_ROLL, capacity: 3 }),
@@ -472,6 +482,7 @@ class Palletizer extends Machine {
       portIn: true,
       portOut: true,
       portRate: EXPRESS_SPEED,
+      jams: true,
       accent: "#a0784a",
       inTray: new Tray({ kinds: PALLETS.map((p) => p.zine), capacity: ZINES_PER_PALLET * 2 }),
       outTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 3 }),
@@ -495,6 +506,10 @@ class Palletizer extends Machine {
   progress() {
     if (!this.wrapping) return null;
     return Math.min(1, this.elapsed / PALLET_WRAP_SECONDS);
+  }
+
+  cycleSeconds() {
+    return PALLET_WRAP_SECONDS;
   }
 
   bodyHint() {

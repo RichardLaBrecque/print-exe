@@ -87,6 +87,7 @@ const Save = {
       floor: { ...game.floor },
       licenses: [...game.licenses],
       nextBillIn: game.nextBillIn,
+      jamUpkeepOwed: game.jamUpkeepOwed,
       graceLeft: game.graceLeft,
       peakIncome: game.peakIncome,
       zinesSold: game.zinesSold,
@@ -133,6 +134,7 @@ const Save = {
     game.floor = { ...data.floor };
     game.licenses = new Set(data.licenses);
     game.nextBillIn = data.nextBillIn;
+    game.jamUpkeepOwed = data.jamUpkeepOwed ?? 0;
     game.graceLeft = data.graceLeft;
     game.peakIncome = data.peakIncome;
     // Saves from before belts were locked had belts from the start

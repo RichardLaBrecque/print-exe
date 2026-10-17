@@ -61,6 +61,15 @@ const OUTBOX_UPGRADE_COST = 50;
 const TRAY_SIZE = 5;
 const ZINE_PRICE = 10;
 const INK = "#4a4f5c";
+// Jams: a `jams` machine (tier 2) whose OUT tray stays full pays more upkeep. A tray that is
+// full for under JAM_GRACE_SECONDS doesn't count, so a balanced line that fills for a moment
+// never shows a jam. After that, each step spent full adds 1x, up to JAM_MAX_MULTIPLIER. A step
+// is JAM_CYCLES_PER_STEP of its own cycle time, but never shorter than JAM_MIN_STEP_SECONDS, so
+// there's time to spot and fix a jam.
+const JAM_GRACE_SECONDS = 10;
+const JAM_CYCLES_PER_STEP = 4;
+const JAM_MIN_STEP_SECONDS = 30;
+const JAM_MAX_MULTIPLIER = 4;
 
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
@@ -138,10 +147,12 @@ class Machine {
   //
   // `wallOnly` machines (Outbox, Truck Dock and the paper supplies) take deliveries in or ship
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
+  //
+  // `jams` machines pay more upkeep while their OUT tray stays full (see JAM_CYCLES_PER_STEP).
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "",
     inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, portRate = BELT_SPEED,
-    wallOnly = false,
+    wallOnly = false, jams = false,
   }) {
     this.title = title;
     this.description = description; // one or two sentences for the hover tooltip
@@ -162,6 +173,8 @@ class Machine {
     if (portOut) outTray.pullable = false;
     this.portRate = portRate;
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
+    this.jams = jams;
+    this.jamSeconds = 0; // how long the OUT tray has been full without a break, grace included
     this.shake = 0;
   }
 
@@ -267,6 +280,7 @@ class Machine {
       trays: this.allTrays().map((tray) => tray.saveState()),
       ports: this.ports.map((port) => ({ ...port })),
       portTimer: this.portTimer,
+      jamSeconds: this.jamSeconds,
     };
   }
 
@@ -282,6 +296,7 @@ class Machine {
       if (s.outPort && this.outPort) Object.assign(this.outPort, s.outPort);
     }
     this.portTimer = s.portTimer ?? 0;
+    this.jamSeconds = s.jamSeconds ?? 0;
   }
 
   allTrays() {
@@ -298,10 +313,54 @@ class Machine {
 
   update(dt, game) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
+    if (this.jams) this.jamSeconds = this.outTray.isFull() ? this.jamSeconds + dt : 0;
     if (this.outPort) {
       this.portTimer = Math.min(1, this.portTimer + dt * this.portRate);
       if (this.portTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.portTimer = 0;
     }
+  }
+
+  // How long one job takes, for counting jam cycles. A `jams` machine without `seconds` overrides it.
+  cycleSeconds() {
+    return this.seconds;
+  }
+
+  // How long the OUT tray must stay full for each step up in upkeep.
+  jamStepSeconds() {
+    return Math.max(JAM_CYCLES_PER_STEP * this.cycleSeconds(), JAM_MIN_STEP_SECONDS);
+  }
+
+  // 1 normally. While the OUT tray stays full: 1x for the first step, then 2x, 3x, and
+  // JAM_MAX_MULTIPLIER from then on.
+  upkeepMultiplier() {
+    if (!this.isJammed()) return 1;
+    return Math.min(JAM_MAX_MULTIPLIER, 1 + Math.floor(this.jammedFor() / this.jamStepSeconds()));
+  }
+
+  // Jammed once the OUT tray has stayed full past the grace period.
+  isJammed() {
+    return this.jams && this.jamSeconds > JAM_GRACE_SECONDS;
+  }
+
+  // Seconds jammed, not counting the grace period.
+  jammedFor() {
+    return Math.max(0, this.jamSeconds - JAM_GRACE_SECONDS);
+  }
+
+  // Seconds until upkeep steps up again, or null when it isn't jammed or is already at the most.
+  nextJamStepIn() {
+    if (!this.isJammed() || this.upkeepMultiplier() === JAM_MAX_MULTIPLIER) return null;
+    const step = this.jamStepSeconds();
+    return step - (this.jammedFor() % step);
+  }
+
+  // What the body shows while jammed, e.g. "JAMMED: 2x IN 0:12" or "JAMMED: UPKEEP 4x".
+  jamLabel() {
+    const multiplier = this.upkeepMultiplier();
+    const nextIn = this.nextJamStepIn();
+    if (nextIn === null) return `JAMMED: UPKEEP ${multiplier}x`;
+    const now = multiplier > 1 ? `UPKEEP ${multiplier}x, ` : "";
+    return `JAMMED: ${now}${multiplier + 1}x IN ${clock(nextIn)}`;
   }
 
   // Ports -------------------------------------------------------------------------------
@@ -507,6 +566,30 @@ class Machine {
     }
 
     this.drawPorts(ctx, game);
+    if (this.isJammed()) this.drawJamTag(ctx);
+  }
+
+  // A red tag with the upkeep multiplier and the time to the next step, centered just above
+  // the machine so it's clear of the frame and the tap outline, and as wide as its text needs.
+  drawJamTag(ctx) {
+    ctx.font = Draw.font(11, true);
+    const text = this.jamLabel();
+    const w = ctx.measureText(text).width + 12;
+    const h = 17;
+    const x = this.rect.x + (this.rect.w - w) / 2;
+    const y = this.rect.y - h + 2; // overlaps the 6 px gap above the body a little
+    ctx.fillStyle = "#d93030";
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 4);
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+    ctx.textAlign = "left";
   }
 
   drawTray(ctx, r, tray, label) {
@@ -597,6 +680,7 @@ class Machine {
       ctx.roundRect(px, py, pw * bar, 7, 3);
       ctx.fill();
     }
+
   }
 
   drawIcon(_ctx, _x, _y, _s) {}

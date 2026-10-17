@@ -5,6 +5,8 @@ const LEDGER_KEEP = 200; // recent ledger entries kept for the list and rate
 
 // Running costs and the fail state. Rent and machine upkeep are billed every minute. A bill can
 // take cash below $0; you then have GRACE_SECONDS to get back to $0 or you go bankrupt.
+// Extra upkeep from jammed machines (see upkeepMultiplier) builds up between bills and is
+// billed with them as its own ledger line.
 const RENT_PER_SQUARE = 0.25; // $ per floor square per minute
 const BILL_SECONDS = 60;
 const FIRST_BILL_SECONDS = 120; // a little longer to get the first loop going
@@ -102,6 +104,7 @@ const Game = {
   hand: HAND.EMPTY,
   time: 0,
   nextBillIn: FIRST_BILL_SECONDS, // seconds until rent and upkeep are billed
+  jamUpkeepOwed: 0, // $ of extra upkeep from jammed machines, billed with the next rent
   graceLeft: null, // seconds left to get back above $0, or null when not overdue
   bankrupt: false,
   peakIncome: 0, // best income per second seen, for the bankruptcy screen
@@ -718,6 +721,16 @@ const Game = {
     return Math.round(this.rentPerMinute() + this.upkeepPerMinute());
   },
 
+  // The extra upkeep jammed machines are costing right now, $ per minute.
+  jamUpkeepPerMinute() {
+    return this.machines.reduce((sum, m) => sum + m.upkeep * (m.upkeepMultiplier() - 1), 0);
+  },
+
+  // What the next bill will charge: rent and upkeep, plus jam upkeep owed so far.
+  nextBillTotal() {
+    return this.billPerMinute() + Math.round(this.jamUpkeepOwed);
+  },
+
   incomePerSecond() {
     return this.earnedInLast(60) / 60;
   },
@@ -751,7 +764,7 @@ const Game = {
 
   // Sales over the last minute less rent and upkeep, per second. Negative when losing money.
   profitPerSecond() {
-    return this.incomePerSecond() - this.billPerMinute() / 60;
+    return this.incomePerSecond() - (this.billPerMinute() + this.jamUpkeepPerMinute()) / 60;
   },
 
   // Squares covered by a machine or a belt piece, counting one being dragged.
@@ -787,11 +800,15 @@ const Game = {
   payBills() {
     const bill = this.billPerMinute();
     this.spend(bill, "Rent & upkeep");
-    this.floatText(`-${money(bill)} rent`, Camera.x, Camera.y, "#d93030");
+    const jam = Math.round(this.jamUpkeepOwed);
+    this.jamUpkeepOwed = 0;
+    if (jam > 0) this.spend(jam, "Jammed machine upkeep");
+    this.floatText(`-${money(bill + jam)} rent`, Camera.x, Camera.y, "#d93030");
   },
 
   // Bills come due every minute; being below $0 for GRACE_SECONDS ends the run.
   updateFinances(dt) {
+    this.jamUpkeepOwed += (this.jamUpkeepPerMinute() * dt) / 60;
     this.nextBillIn -= dt;
     if (this.nextBillIn <= 0) {
       this.payBills();
@@ -1258,7 +1275,10 @@ function drawHoverInfo() {
   const hover = Game.hover;
   if (!hover || performance.now() - hover.since < HOVER_DELAY_MS) return;
   const { target } = hover;
-  const upkeep = target.upkeep ? ` Upkeep $${target.upkeep}/min.` : "";
+  const jammed = target.isJammed?.()
+    ? ` Its OUT tray is full: clear it before upkeep goes up (now ${target.upkeepMultiplier()}x).`
+    : "";
+  const upkeep = target.upkeep ? ` Upkeep $${target.upkeep}/min.${jammed}` : "";
   Draw.infoTip(ctx, target.title, `${target.description}${upkeep}`, hover.x, hover.y);
 }
 

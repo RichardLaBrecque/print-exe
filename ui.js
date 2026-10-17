@@ -463,7 +463,7 @@ const UI = {
     const sign = game.cash < 0 ? "-" : "";
     setText(this.moneyValueEl, `${sign}$${String(Math.abs(game.cash)).padStart(6, "0")}`);
     setText(this.moneyRateEl, `Income ${perSecond(game.incomePerSecond())}`);
-    setText(this.moneyCostsEl, `Costs ${perSecond(game.billPerMinute() / 60)}`);
+    setText(this.moneyCostsEl, `Costs ${perSecond((game.billPerMinute() + game.jamUpkeepPerMinute()) / 60)}`);
 
     const overdue = game.graceLeft !== null;
     this.moneyEl.classList.toggle("overdue", overdue);
@@ -471,7 +471,7 @@ const UI = {
       this.moneyBillEl,
       overdue
         ? `BANKRUPT IN ${clock(game.graceLeft)}`
-        : `Rent ${money(game.billPerMinute())} in ${clock(game.nextBillIn)}`,
+        : `Rent ${money(game.nextBillTotal())} in ${clock(game.nextBillIn)}`,
     );
 
     // Flash the counter when money comes in
