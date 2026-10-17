@@ -279,7 +279,7 @@ const Game = {
     this.tool = tool;
     const tips = {
       select: "Tap trays to use them. Drag machines and belts to move them. Drag open floor to look around.",
-      belt: "Drag to lay belts. Tap a belt to rotate it. Right-click for Select.",
+      belt: "Drag to lay belts. Tap a belt or a tray's triangle to turn it. Right-click for Select.",
       express: "Drag to lay Express Belts. Drag over plain belts to upgrade them.",
       splitter: "Tap a belt or empty square for a splitter. Tap a splitter to rotate it.",
       bridge: "Tap a belt or empty square for a bridge. Lines can then cross it.",
@@ -553,9 +553,9 @@ const Game = {
   },
 
   upgradeMachine(machine, wx, wy) {
-    const cost = machine.upgradeCost();
+    const cost = machine.upgradeCost(this);
     if (cost === null) {
-      this.showTip(machine.upgradeHint(), wx, wy);
+      this.showTip(machine.upgradeHint(this), wx, wy);
       return;
     }
     if (this.cash < cost) {
@@ -569,7 +569,7 @@ const Game = {
     machine.shake = 0.4;
     const { x, y, w } = machine.rect;
     this.floatText(`-${money(cost)}`, x + w / 2, y, "#d93030");
-    this.showTip(`${oldTitle} is now an ${machine.title}!`, x + w / 2, y);
+    this.showTip(machine.upgradedTip(), x + w / 2, y);
   },
 
   // Moving a belt piece is free: it keeps its direction and anything it's carrying.
@@ -1091,7 +1091,7 @@ function drawUpgradeMarkers() {
   if (Game.tool !== "upgrade") return;
 
   for (const m of Game.machines) {
-    const cost = m.upgradeCost();
+    const cost = m.upgradeCost(Game);
     if (cost === null) continue;
     const affordable = Game.cash >= cost;
     const { x, y, w, h } = m.rect;
@@ -1279,7 +1279,8 @@ function drawHoverInfo() {
     ? ` Its OUT tray is full: clear it before upkeep goes up (now ${target.upkeepMultiplier()}x).`
     : "";
   const upkeep = target.upkeep ? ` Upkeep $${target.upkeep}/min.${jammed}` : "";
-  Draw.infoTip(ctx, target.title, `${target.description}${upkeep}`, hover.x, hover.y);
+  const text = target.details ? target.details(Game) : target.description;
+  Draw.infoTip(ctx, target.title, `${text}${upkeep}`, hover.x, hover.y);
 }
 
 // A cursor that shows the item in your hand: a small arrow with the item on a white card beside it.

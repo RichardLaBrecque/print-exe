@@ -150,12 +150,13 @@ class Machine {
   //
   // `jams` machines pay more upkeep while their OUT tray stays full (see JAM_CYCLES_PER_STEP).
   constructor(title, {
-    col, row, cols, rows, accent, upkeep = 0, description = "",
+    col, row, cols, rows, accent, upkeep = 0, description = "", beltNote = "",
     inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, portRate = BELT_SPEED,
     wallOnly = false, jams = false,
   }) {
     this.title = title;
     this.description = description; // one or two sentences for the hover tooltip
+    this.beltNote = beltNote; // how it works with belts, added to the tooltip once belts unlock
     this.upkeep = upkeep; // $ per minute, billed with rent
     this.col = col;
     this.row = row;
@@ -265,6 +266,13 @@ class Machine {
     return this.bodyHint(game);
   }
 
+  // Hover and Shop text: the description, plus the belt note once belts unlock, since ports
+  // and belts mean nothing before then.
+  details(game) {
+    if (!game.beltsUnlocked || !this.beltNote) return this.description;
+    return `${this.description} ${this.beltNote}`;
+  }
+
   // Manual machines override these three.
   canActivate(_game) { return false; }
   activate(_game) {}
@@ -304,9 +312,10 @@ class Machine {
   }
 
   // Upgrades. Machines that can be upgraded override these.
-  upgradeCost() { return null; } // price of the next upgrade, or null if none left
-  upgradeHint() { return "No upgrades for this machine."; }
+  upgradeCost(_game) { return null; } // price of the next upgrade, or null if none left or not yet
+  upgradeHint(_game) { return "No upgrades for this machine."; }
   upgrade() {}
+  upgradedTip() { return `${this.title} upgraded.`; } // shown once the upgrade is bought
 
   // 0..1 to show a progress bar in the body, or null for none.
   progress() { return null; }
@@ -848,6 +857,12 @@ class Supply extends Machine {
   upgradeCost() { return this.autoReorder ? null : this.reorderCost; }
   upgradeHint() { return "Already reorders on its own."; }
   upgrade() { this.autoReorder = true; }
+  upgradedTip() { return `${this.title} now reorders on its own whenever you can afford it.`; }
+
+  details(game) {
+    const text = super.details(game);
+    return this.autoReorder ? `${text} Reorders on its own whenever you can afford it.` : text;
+  }
 
   progress() {
     if (this.pending === 0) return null;
@@ -882,8 +897,9 @@ class Supply extends Machine {
 class PaperSupply extends Supply {
   constructor(at) {
     super("Paper Supply", {
-      description: "Pushes a Blank Sheet a second out of its chute onto one square. " +
-        "Turn the chute with the Belt tool; tap the middle to order 20 more for $40.",
+      description: "Holds Blank Sheets. Take one from its tray, or tap the middle to order 20 more for $40.",
+      beltNote: "It pushes a sheet a second out of its OUT triangle onto the square it faces. " +
+        "Turn the triangle with the Belt tool.",
       upkeep: 0,
       ...at,
       accent: "#5fb3d9",
@@ -953,7 +969,11 @@ class Converter extends Machine {
   }
 
   bodyHint() {
-    if (!this.hasRoom()) return "OUT tray is full or holds a different job. Clear it first.";
+    if (!this.hasRoom()) {
+      return Array.isArray(this.output)
+        ? "OUT tray is full, or holds a different kind. Clear it first."
+        : "OUT tray is full. Clear it first.";
+    }
     return "Runs on its own. Load its IN tray.";
   }
 
@@ -987,6 +1007,7 @@ class DesktopPrinter extends Converter {
   constructor(at) {
     super("Desktop Printer", {
       description: `Prints Blank Sheets into saddle-stitch Printed Sheets, one every ${PRINT_SECONDS} seconds.`,
+      beltNote: "A belt can feed its IN triangle, and its OUT triangle pushes prints onto a belt.",
       upkeep: 5,
       ...at,
       portIn: true,
@@ -1023,6 +1044,7 @@ class ManualStapler extends Machine {
   constructor(at) {
     super("Manual Stapler", {
       description: "Tap the middle to staple a saddle-stitch Printed Sheet into a Zine.",
+      beltNote: "A belt can feed its IN triangle, and its OUT triangle pushes Zines onto a belt.",
       upkeep: 2,
       ...at,
       portIn: true,
@@ -1061,11 +1083,12 @@ class ManualStapler extends Machine {
 
   bodyHint() {
     if (this.outTray.isFull()) return "Out tray is full. Collect your Zines.";
-    return "Load Printed Pages in the IN tray first.";
+    return "Load a saddle-stitch Printed Sheet in the IN tray first.";
   }
 
   upgradeCost() { return this.level === 0 ? STAPLER_UPGRADE_COST : null; }
   upgradeHint() { return "Already an Auto Stapler."; }
+  upgradedTip() { return "Manual Stapler is now an Auto Stapler!"; }
 
   upgrade() {
     this.level = 1;
@@ -1118,6 +1141,7 @@ class Outbox extends Machine {
   constructor(at) {
     super("Outbox", {
       description: `Sells Zines for $${ZINE_PRICE} each, up to two a second.`,
+      beltNote: "A belt can feed its IN triangle.",
       upkeep: 2,
       ...at,
       portIn: true,
@@ -1144,8 +1168,10 @@ class Outbox extends Machine {
     if (s.level === 1) this.applyUpgrade();
   }
 
-  upgradeCost() { return this.level === 0 ? OUTBOX_UPGRADE_COST : null; }
-  upgradeHint() { return "Already has two inputs."; }
+  // A second IN triangle only helps once there are belts to feed it.
+  upgradeCost(game) { return this.level === 0 && game.beltsUnlocked ? OUTBOX_UPGRADE_COST : null; }
+  upgradeHint() { return this.level === 0 ? "Its upgrade, a second input for belts, opens once belts unlock." : "Already has two inputs."; }
+  upgradedTip() { return "Outbox now takes Zines through two IN triangles."; }
 
   upgrade() {
     this.applyUpgrade();
@@ -1155,7 +1181,7 @@ class Outbox extends Machine {
   applyUpgrade() {
     this.level = 1;
     this.title = "Outbox (2 inputs)";
-    this.description = `Sells Zines for $${ZINE_PRICE} each, up to two a second, through two IN triangles.`;
+    this.beltNote = "Two belts can feed it, one at each IN triangle.";
   }
 
   bodyHint() { return `Ships Zines for $${ZINE_PRICE} each. Shipped: ${this.shipped}`; }
@@ -1204,6 +1230,7 @@ class TrashCan extends Machine {
   constructor(at) {
     super("Trash Can", {
       description: "Throws away anything you drop in it.",
+      beltNote: "A belt can feed it from any side.",
       upkeep: 0,
       ...at,
       cols: 1,

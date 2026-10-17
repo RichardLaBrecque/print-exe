@@ -62,7 +62,8 @@ function palletValue(pallet) {
 class PaperRollRack extends Supply {
   constructor(at) {
     super("Paper Roll Rack", {
-      description: `Holds Blank Rolls. Tap the middle to order 10 rolls (${10 * SHEETS_PER_ROLL} sheets of paper) for $150.`,
+      description: `Holds Blank Rolls. Tap the middle to order 10 rolls (${10 * SHEETS_PER_ROLL} sheets of paper) for $150. ` +
+        "Rolls are too heavy to carry, so it pushes one a second out of its OUT triangle onto a belt.",
       upkeep: 10,
       ...at,
       chute: true,
@@ -121,7 +122,7 @@ class Press extends Converter {
 class RollPress extends Press {
   constructor(at) {
     super("Roll Press", {
-      description: `Prints a Blank Roll every ${ROLL_PRESS_SECONDS} seconds for its job: Saddle-Stitch, Cover or Guts. Tap the middle to switch jobs.`,
+      description: `Prints Blank Rolls into printed rolls for its job (Saddle-Stitch, Cover or Guts), one every ${ROLL_PRESS_SECONDS} seconds. Tap the middle to switch jobs.`,
       upkeep: 60,
       ...at,
       cols: 4,
@@ -164,7 +165,7 @@ class RollPress extends Press {
 class SheetFedPress extends Press {
   constructor(at) {
     super("Sheet-Fed Press", {
-      description: "Prints a Blank Sheet a second for its job: Saddle-Stitch, Cover or Guts. Tap the middle to switch jobs.",
+      description: "Prints Blank Sheets into Printed Sheets for its job (Saddle-Stitch, Cover or Guts), one a second. Tap the middle to switch jobs.",
       upkeep: 30,
       ...at,
       cols: 4,

@@ -336,8 +336,9 @@ const UI = {
         <span class="name">${entry.name} <span class="size">${size}</span></span>
         <span class="price">${money(entry.price)}</span>
         <button type="button" class="raised">Buy</button>`;
-      const description = sample ? sample.description : LICENSES[entry.license].description;
-      row.addEventListener("mouseenter", (e) => this.showTooltip(entry.name, description, e));
+      // Built when shown, so belt notes appear once belts unlock
+      const description = () => (sample ? sample.details(this.game) : LICENSES[entry.license].description);
+      row.addEventListener("mouseenter", (e) => this.showTooltip(entry.name, description(), e));
       row.addEventListener("mousemove", (e) => this.moveTooltip(e));
       row.addEventListener("mouseleave", () => this.hideTooltip());
 
