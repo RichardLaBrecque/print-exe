@@ -36,7 +36,7 @@ const PERFECT_ZINE_PRICE = 30; // 3x a saddle-stitch Zine
 
 const ZINES_PER_PALLET = 10;
 const PALLET_WRAP_SECONDS = 2;
-const PALLETS_PER_TRUCK = 2;
+const PALLETS_PER_TRUCK = 4;
 const TRUCK_TRIP_SECONDS = 6;
 
 // Each kind of zine, its pallet, and the price per zine a truck is paid on delivery.
@@ -530,7 +530,7 @@ class Palletizer extends Machine {
 class TruckDock extends Machine {
   constructor(at) {
     super("Truck Dock", {
-      description: `Loads ${PALLETS_PER_TRUCK} pallets onto a truck and gets paid when it delivers.`,
+      description: `Loads pallets of any kind onto a truck, which leaves once it has ${PALLETS_PER_TRUCK} and gets paid when it delivers.`,
       upkeep: 20,
       ...at,
       wallOnly: true,
@@ -538,7 +538,7 @@ class TruckDock extends Machine {
       rows: 3,
       portIn: true,
       accent: "#6b7080",
-      inTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 4 }),
+      inTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: PALLETS_PER_TRUCK }),
     });
     this.cargo = []; // pallets on the truck; a truck can carry mixed kinds
     this.away = 0; // seconds left on the delivery trip, 0 = docked
@@ -566,8 +566,8 @@ class TruckDock extends Machine {
   }
 
   bodyHint() {
-    if (this.away > 0) return "Truck is out on delivery.";
-    return `Truck loading: ${this.loaded}/${PALLETS_PER_TRUCK} pallets.`;
+    if (this.away > 0) return `Truck is out on delivery. Pallets waiting: ${this.inTray.count}/${PALLETS_PER_TRUCK}.`;
+    return `Truck loading: ${this.loaded}/${PALLETS_PER_TRUCK} pallets. It leaves when full.`;
   }
 
   update(dt, game) {
@@ -586,11 +586,12 @@ class TruckDock extends Machine {
       this.cargo = [];
     }
 
+    // Pallets go aboard as they arrive, whatever their kind, so the tray only fills while the
+    // truck is out. The truck leaves only with a full load.
     while (this.loaded < PALLETS_PER_TRUCK && this.inTray.count > 0) this.cargo.push(this.inTray.take());
-    if (this.loaded === PALLETS_PER_TRUCK) {
-      this.away = TRUCK_TRIP_SECONDS;
-      game.truckLeft();
-    }
+    if (this.loaded < PALLETS_PER_TRUCK) return;
+    this.away = TRUCK_TRIP_SECONDS;
+    game.truckLeft();
   }
 
   drawIcon(ctx, x, y, s) {
@@ -616,7 +617,7 @@ class TruckDock extends Machine {
     ctx.fillRect(x + s * 0.78, y + s * 0.4, s * 0.14, s * 0.12);
     // Pallets aboard
     ctx.fillStyle = "#d9a066";
-    for (let i = 0; i < this.loaded; i++) ctx.fillRect(x + s * (0.06 + i * 0.32), y + s * 0.35, s * 0.26, s * 0.3);
+    for (let i = 0; i < this.loaded; i++) ctx.fillRect(x + s * (0.06 + i * 0.16), y + s * 0.35, s * 0.14, s * 0.3);
     // Wheels
     ctx.fillStyle = INK;
     for (const fx of [0.18, 0.55, 0.85]) {
