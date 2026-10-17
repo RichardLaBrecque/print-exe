@@ -63,13 +63,12 @@ const ZINE_PRICE = 10;
 const INK = "#4a4f5c";
 // Jams: a `jams` machine (tier 2) whose OUT tray stays full pays more upkeep. A tray that is
 // full for under JAM_GRACE_SECONDS doesn't count, so a balanced line that fills for a moment
-// never shows a jam. After that, each step spent full adds 1x, up to JAM_MAX_MULTIPLIER. A step
-// is JAM_CYCLES_PER_STEP of its own cycle time, but never shorter than JAM_MIN_STEP_SECONDS, so
-// there's time to spot and fix a jam.
+// never shows a jam. After that, each step spent full adds 1x, with no limit, so a jam nobody
+// notices gets expensive. A step is JAM_CYCLES_PER_STEP of its own cycle time, but never shorter
+// than JAM_MIN_STEP_SECONDS, so there's time to spot and fix a jam.
 const JAM_GRACE_SECONDS = 10;
 const JAM_CYCLES_PER_STEP = 4;
 const JAM_MIN_STEP_SECONDS = 30;
-const JAM_MAX_MULTIPLIER = 4;
 
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
@@ -330,11 +329,10 @@ class Machine {
     return Math.max(JAM_CYCLES_PER_STEP * this.cycleSeconds(), JAM_MIN_STEP_SECONDS);
   }
 
-  // 1 normally. While the OUT tray stays full: 1x for the first step, then 2x, 3x, and
-  // JAM_MAX_MULTIPLIER from then on.
+  // 1 normally. While the OUT tray stays full: 1x for the first step, then 2x, 3x, 4x and on.
   upkeepMultiplier() {
     if (!this.isJammed()) return 1;
-    return Math.min(JAM_MAX_MULTIPLIER, 1 + Math.floor(this.jammedFor() / this.jamStepSeconds()));
+    return 1 + Math.floor(this.jammedFor() / this.jamStepSeconds());
   }
 
   // Jammed once the OUT tray has stayed full past the grace period.
@@ -347,20 +345,17 @@ class Machine {
     return Math.max(0, this.jamSeconds - JAM_GRACE_SECONDS);
   }
 
-  // Seconds until upkeep steps up again, or null when it isn't jammed or is already at the most.
+  // Seconds until upkeep steps up again. Only meaningful while jammed.
   nextJamStepIn() {
-    if (!this.isJammed() || this.upkeepMultiplier() === JAM_MAX_MULTIPLIER) return null;
     const step = this.jamStepSeconds();
     return step - (this.jammedFor() % step);
   }
 
-  // What the body shows while jammed, e.g. "JAMMED: 2x IN 0:12" or "JAMMED: UPKEEP 4x".
+  // What the tag shows while jammed, e.g. "JAMMED: 2x IN 0:12" or "JAMMED: UPKEEP 5x, 6x IN 0:20".
   jamLabel() {
     const multiplier = this.upkeepMultiplier();
-    const nextIn = this.nextJamStepIn();
-    if (nextIn === null) return `JAMMED: UPKEEP ${multiplier}x`;
     const now = multiplier > 1 ? `UPKEEP ${multiplier}x, ` : "";
-    return `JAMMED: ${now}${multiplier + 1}x IN ${clock(nextIn)}`;
+    return `JAMMED: ${now}${multiplier + 1}x IN ${clock(this.nextJamStepIn())}`;
   }
 
   // Ports -------------------------------------------------------------------------------

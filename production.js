@@ -22,8 +22,8 @@
 // 2 items a second; the binders get one IN triangle each for COVER and GUTS.
 //
 // Jams: every machine here with an OUT tray pays more upkeep while that tray stays full. After
-// 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds to 4x (see
-// JAM_GRACE_SECONDS), so a backed-up line costs money.
+// 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds with no limit (see
+// JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
 
 const ROLL_PRESS_SECONDS = 5;
 const SHEET_PRESS_SECONDS = 1;
