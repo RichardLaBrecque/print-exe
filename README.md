@@ -52,12 +52,15 @@ When releasing a change, bump every `?v=` in the import map in `index.html` so b
 
 ## Checks
 
-The game needs nothing installed, but there are type checks and a linter for development. They run on Node 24, which `mise.toml` sets:
+The game needs nothing installed, but there are type checks, a linter and tests for development. They run on Node 24, which `mise.toml` sets:
 
 ```sh
 npm install
 npm run check   # TypeScript checks the JavaScript, using its JSDoc comments
 npm run lint    # ESLint
+npm test        # Node's test runner, on the tests in test/
 ```
+
+The tests cover the simulation and saves: trays, machines, belts, splitters, jams, bills and bankruptcy, and loading old and broken saves. They run the game's own modules in Node, without a browser.
 
 The type checks catch mistakes on classes such as `Tray`, `Machine` and `Belt`. JSDoc types also check the names the code passes around as strings (`Item`, `Tool`, `Part`, `Port`) and the save format (`SaveData`). In JavaScript files, TypeScript treats other plain objects such as `Game` as open-ended, so it doesn't catch a misspelled property on them.
