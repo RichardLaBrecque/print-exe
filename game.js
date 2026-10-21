@@ -22,6 +22,8 @@ const GRACE_SECONDS = 60;
 // Belts start locked: sell this many Zines by hand first.
 export const BELTS_UNLOCK_ZINES = 20;
 const PORT_HIGHLIGHT_SECONDS = 15; // how long ports pulse after belts unlock
+/** @typedef {"select" | "belt" | "express" | "splitter" | "bridge" | "erase" | "upgrade"} Tool */
+/** @type {Tool[]} */
 const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
 // Scorecard records: game time each was first reached, null until then. Saves from before
 // records were kept mark ones they had already reached as MILESTONE_UNKNOWN.
@@ -66,7 +68,8 @@ export const Game = {
   ],
   belts: new Map(), // tileKey -> Belt
   buildBatch: new Map(), // label -> { count, amount } since the pointer went down
-  tool: "select", // select | belt | express | splitter | erase | upgrade
+  /** @type {Tool} */
+  tool: "select",
   licenses: new Set(), // keys of LICENSES bought in the Shop
   beltDir: 0, // direction for the next belt placed with a tap
   // Machine being dragged: { machine, from: { col, row }, valid }
@@ -194,6 +197,7 @@ export const Game = {
 
   // The IN or OUT tray covering this square, if there is one. `kind` is "in" or "out";
   // on a machine with several inputs, the square decides which input you get.
+  /** @param {number} col @param {number} row @param {"in" | "out"} kind */
   trayAt(col, row, kind) {
     const wx = (col + 0.5) * TILE;
     const wy = (row + 0.5) * TILE;
@@ -210,6 +214,7 @@ export const Game = {
     this.portHighlightUntil = this.time + PORT_HIGHLIGHT_SECONDS;
   },
 
+  /** @param {Tool} tool */
   setTool(tool) {
     if (BELT_TOOLS.includes(tool) && !this.beltsUnlocked) {
       const left = BELTS_UNLOCK_ZINES - this.zinesSold;

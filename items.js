@@ -2,8 +2,9 @@
 
 import { INK } from "./draw.js";
 
-// Every item in the game, by display name. Also what the player's hand can hold.
-export const HAND = {
+// Every item in the game, by display name. Also what the player's hand can hold. Frozen, so the
+// type checker knows its exact names and flags a misspelled one.
+export const HAND = Object.freeze({
   EMPTY: null,
   // The four states of paper: blank or printed, sheet or roll. Printed paper also carries
   // the job it was printed for (see JOBS). Saddle-stitch sheets come from either a desktop
@@ -21,9 +22,13 @@ export const HAND = {
   PERFECT_ZINE: "Perfect-Bound Zine",
   SADDLE_PALLET: "Pallet: Saddle-Stitched",
   PERFECT_PALLET: "Pallet: Perfect-Bound",
-};
+});
+
+/** @typedef {(typeof HAND)[Exclude<keyof typeof HAND, "EMPTY">]} Item the name of one item */
 
 // Press job settings: Saddle-Stitch, Cover or Guts, in the order a tap cycles them.
+/** @typedef {{ name: string, label: string, roll: Item, sheet: Item, color: string }} Job */
+/** @type {Job[]} */
 export const JOBS = [
   { name: "Saddle-Stitch", label: "SADDLE", roll: HAND.SADDLE_ROLL, sheet: HAND.SADDLE_SHEET, color: "#9b8cff" },
   { name: "Cover", label: "COVER", roll: HAND.COVER_ROLL, sheet: HAND.COVER_SHEET, color: "#e5703a" },
@@ -33,16 +38,19 @@ export const PRINTED_ROLLS = JOBS.map((job) => job.roll);
 export const PRINTED_SHEETS = JOBS.map((job) => job.sheet);
 
 // The job a printed sheet or roll belongs to, or undefined for anything else.
+/** @param {Item | null} item @returns {Job | undefined} */
 export function jobOf(item) {
   return JOBS.find((job) => job.roll === item || job.sheet === item);
 }
 
 // Rolls are too heavy to carry; only belts move them.
+/** @param {Item | null} item */
 export function canCarry(item) {
   return item !== HAND.BLANK_ROLL && !PRINTED_ROLLS.includes(item);
 }
 
 // Item icons, drawn into an s-by-s box at (x, y).
+/** @param {CanvasRenderingContext2D} ctx @param {Item} item @param {number} x @param {number} y @param {number} s */
 export function drawItem(ctx, item, x, y, s) {
   ctx.strokeStyle = INK;
   if (item === HAND.BLANK_SHEET) {

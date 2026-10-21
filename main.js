@@ -7,6 +7,7 @@ import { HAND, drawItem } from "./items.js";
 import { Camera, Game, PLANTER, STALL, YARD } from "./game.js";
 import { Save } from "./save.js";
 import { UI } from "./ui.js";
+/** @import { Tool } from "./game.js" */
 
 const TAP_SLOP = 8; // screen px a pointer can move before a tap becomes a drag
 
@@ -624,6 +625,7 @@ window.addEventListener("keydown", (e) => {
     Camera.fit();
     return;
   }
+  /** @type {Record<string, Tool>} */
   const tools = { v: "select", escape: "select", b: "belt", x: "express", s: "splitter", r: "bridge", e: "erase", u: "upgrade" };
   const tool = tools[e.key.toLowerCase()];
   if (tool && tool !== Game.tool) Game.setTool(tool);

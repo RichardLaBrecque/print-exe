@@ -3,9 +3,11 @@
 import { clock, money, perSecond, signedPerSecond, zineRate } from "./format.js";
 import { CATALOG, LICENSES } from "./catalog.js";
 import { BELTS_UNLOCK_ZINES, MILESTONE_UNKNOWN } from "./game.js";
+/** @import { Tool } from "./game.js" */
 
 const HELP_HIDDEN_KEY = "print95.hideHelp";
 
+/** @type {Record<Tool, string>} */
 const TOOL_NAMES = {
   select: "Select",
   belt: "Belt",

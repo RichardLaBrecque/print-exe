@@ -12,6 +12,39 @@ import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, TrashCan } from "./
 import { Finisher, Palletizer, PaperRollRack, PerfectBinder, RollPress, SaddleStitcher, SheetFedPress, Sheeter, TruckDock } from "./production.js";
 import { BELTS_UNLOCK_ZINES, Camera, MILESTONE_UNKNOWN } from "./game.js";
 
+/** @import { Item } from "./items.js" */
+
+/**
+ * A save, as Save.snapshot writes it. The optional fields are missing from saves made before
+ * they existed, and restore fills them in.
+ * @typedef {object} SaveData
+ * @property {number} version
+ * @property {string} savedAt
+ * @property {number} cash
+ * @property {Item | null} hand
+ * @property {number} time
+ * @property {{ cols: number, rows: number }} floor
+ * @property {string[]} licenses
+ * @property {number} nextBillIn
+ * @property {number} [jamUpkeepOwed]
+ * @property {number | null} graceLeft
+ * @property {number} peakIncome
+ * @property {number} [zinesSold]
+ * @property {object | null} [firstTruck] the scorecard from when the first full truck left
+ * @property {{ production: number | null, profit10k: number | null, profit100k: number | null }} [milestones]
+ * @property {{ time: number, amount: number }[]} [sales]
+ * @property {{ time: number, count: number }[]} [zineSales]
+ * @property {number} [bestZinesPerSecond]
+ * @property {boolean} [beltsUnlocked]
+ * @property {number} beltDir
+ * @property {{ totalEarned: number, totalSpent: number, salesCount: number, entryCount: number, entries: LedgerEntry[] }} ledger
+ * @property {{ x: number, y: number, zoom: number }} camera
+ * @property {PieceState[]} machines each machine's saveState()
+ * @property {PieceState[]} belts each belt, splitter and bridge's saveState()
+ */
+/** @typedef {{ at: string, time: number, label: string, amount: number, kind: "sale" | "spend" | "refund" }} LedgerEntry */
+/** @typedef {{ type: string, col: number, row: number, [field: string]: any }} PieceState */
+
 const SAVE_KEY = "print95.save";
 const BACKUP_KEY = "print95.save.backup"; // a save that failed to load, kept before the autosave replaces it
 const SAVE_VERSION = 1;
@@ -52,6 +85,7 @@ const OLD_ITEM_NAMES = {
 
 // Saves from before Scorecard records: anything already reached gets MILESTONE_UNKNOWN,
 // since when it happened wasn't kept. The rest are stamped as they're reached.
+/** @param {SaveData} data */
 function oldSaveMilestones(data) {
   const profit = data.ledger.totalEarned - data.ledger.totalSpent;
   const reached = (done) => (done ? MILESTONE_UNKNOWN : null);
@@ -62,6 +96,7 @@ function oldSaveMilestones(data) {
   };
 }
 
+/** @param {SaveData} data @returns {SaveData} */
 function renameOldItems(data) {
   let text = JSON.stringify(data);
   for (const [oldName, newName] of Object.entries(OLD_ITEM_NAMES)) {
@@ -76,6 +111,7 @@ export const Save = {
   leaving: false,
 
   // Everything needed to rebuild the shop, as plain JSON-ready data.
+  /** @returns {SaveData} */
   snapshot(game) {
     // A machine or belt mid-drag is saved where it was picked up from
     const machines = game.machines.map((m) => {
@@ -119,6 +155,7 @@ export const Save = {
   // Rebuild the shop from a snapshot. Throws if the data isn't a save this version understands.
   // Everything is read from the save before the game changes, so a save that fails part-way
   // leaves the game as it was.
+  /** @param {SaveData} data */
   restore(game, data) {
     if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
     data = renameOldItems(data);

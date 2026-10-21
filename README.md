@@ -60,4 +60,4 @@ npm run check   # TypeScript checks the JavaScript, using its JSDoc comments
 npm run lint    # ESLint
 ```
 
-The type checks catch mistakes on classes such as `Tray`, `Machine` and `Belt`. In JavaScript files, TypeScript treats plain objects such as `Game` as open-ended, so it doesn't catch a misspelled property on them.
+The type checks catch mistakes on classes such as `Tray`, `Machine` and `Belt`. JSDoc types also check the names the code passes around as strings (`Item`, `Tool`, `Part`, `Port`) and the save format (`SaveData`). In JavaScript files, TypeScript treats other plain objects such as `Game` as open-ended, so it doesn't catch a misspelled property on them.

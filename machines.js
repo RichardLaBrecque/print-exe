@@ -36,6 +36,7 @@ const JAM_MIN_STEP_SECONDS = 30;
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
 export class Tray {
+  /** @param {{ item?: Item | null, kinds?: Item[] | null, capacity?: number, endless?: boolean, pullable?: boolean }} options */
   constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false, pullable = true }) {
     this.item = item; // the kind held now; null when it takes anything or a multi-kind tray is empty
     this.kinds = kinds;
@@ -97,6 +98,11 @@ export class Tray {
   }
 }
 
+/** @import { Item } from "./items.js" */
+/** @typedef {"out" | "body" | `in:${number}`} Part a tappable part of a machine (see Machine#parts) */
+/** @typedef {"in" | "out"} PortKind */
+/** @typedef {{ kind: PortKind, row: number, dir: number }} Port row offset in its tray column, facing DIRS[dir] */
+
 /**
  * What a subclass passes to Machine. Every machine needs col, row, cols, rows and accent, but
  * subclasses pass some of them through spreads (`...at`, `...rest`) the type checker can't
@@ -156,7 +162,7 @@ export class Machine {
     this.wallOnly = wallOnly;
     this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
     this.outTray = outTray;
-    // { kind: "in" | "out", row, dir }: row offset in that tray column, facing DIRS[dir]
+    /** @type {Port[]} */
     this.ports = [
       ...(portIn ? this.inputs.map((_input, i) => ({ kind: "in", ...this.inputEdges(i)[0] })) : []),
       ...(portOut ? [{ kind: "out", ...this.portEdges("out")[0] }] : []),
@@ -181,10 +187,12 @@ export class Machine {
   }
 
   // Tappable parts: "in:0", "in:1", ... for each input, then "out" and "body".
+  /** @returns {Part[]} */
   get parts() {
-    return [...this.inputs.map((_input, i) => `in:${i}`), "out", "body"];
+    return [...this.inputs.map((_input, i) => /** @type {const} */ (`in:${i}`)), "out", "body"];
   }
 
+  /** @param {Part | null} part */
   trayFor(part) {
     if (part === "out") return this.outTray;
     if (part?.startsWith("in:")) return this.inputs[Number(part.slice(3))].tray;
@@ -192,6 +200,7 @@ export class Machine {
   }
 
   // World-space rect for a part, or null if the machine doesn't have it.
+  /** @param {Part} part */
   partRect(part) {
     const { x, y, w, h } = this.rect;
     const inW = this.inputs.length > 0 ? TILE : 0;
@@ -209,6 +218,7 @@ export class Machine {
     return { x: x + inW, y, w: w - inW - outW, h };
   }
 
+  /** @returns {Part | null} */
   partAt(wx, wy) {
     for (const part of this.parts) {
       const r = this.partRect(part);
@@ -224,6 +234,7 @@ export class Machine {
 
   // Tap handling, one trio per part ------------------------------------------
 
+  /** @param {Part | null} part */
   canUse(game, part) {
     if (part?.startsWith("in:")) return this.trayFor(part).accepts(game.hand);
     if (part === "out") return game.hand === HAND.EMPTY && this.outTray.hasItem() && canCarry(this.outTray.item);
@@ -231,6 +242,7 @@ export class Machine {
     return false;
   }
 
+  /** @param {Part} part */
   use(game, part) {
     if (part.startsWith("in:")) {
       this.trayFor(part).put(game.hand);
@@ -242,6 +254,7 @@ export class Machine {
     }
   }
 
+  /** @param {Part | null} part */
   hint(game, part) {
     if (part?.startsWith("in:")) {
       const tray = this.trayFor(part);
@@ -363,6 +376,7 @@ export class Machine {
 
   // Every outward edge of the IN (first) or OUT (last) column, in the order a tap turns
   // through them: the outer side of each tile, plus the top and bottom ends.
+  /** @param {PortKind} kind */
   portEdges(kind) {
     const side = kind === "in" ? 2 : 0; // left for IN, right for OUT
     const edges = [];
@@ -386,24 +400,29 @@ export class Machine {
   }
 
   // The edges a port can turn through: an IN port stays beside its own input.
+  /** @param {Port} port */
   edgesFor(port) {
     return port.kind === "in" ? this.inputEdges(this.inputAtRow(port.row)) : this.portEdges("out");
   }
 
   // The first IN or OUT port; most machines have at most one of each.
+  /** @returns {Port | null} */
   get inPort() {
     return this.ports.find((port) => port.kind === "in") ?? null;
   }
 
+  /** @returns {Port | null} */
   get outPort() {
     return this.ports.find((port) => port.kind === "out") ?? null;
   }
 
   // A port's own square on the machine, and the square outside it that it faces.
+  /** @param {Port} port */
   portTile(port) {
     return { col: this.col + (port.kind === "in" ? 0 : this.cols - 1), row: this.row + port.row };
   }
 
+  /** @param {Port} port */
   portOutside(port) {
     const tile = this.portTile(port);
     const d = DIRS[port.dir];
@@ -411,12 +430,14 @@ export class Machine {
   }
 
   // Edges of a column no other port of that kind is using.
+  /** @param {PortKind} kind @param {Port | null} [except] */
   freeEdges(kind, except = null) {
     const taken = this.ports.filter((p) => p.kind === kind && p !== except);
     return this.portEdges(kind).filter((e) => !taken.some((p) => p.row === e.row && p.dir === e.dir));
   }
 
   // Add a port on the first free edge, preferring a tile without one (e.g. the Outbox upgrade).
+  /** @param {PortKind} kind */
   addPort(kind) {
     const free = this.freeEdges(kind);
     const edge = free.find((e) => !this.ports.some((p) => p.kind === kind && p.row === e.row)) ?? free[0];
@@ -424,6 +445,7 @@ export class Machine {
   }
 
   // Move the port to the next edge of its column, skipping edges another port is on.
+  /** @param {Port} port */
   rotatePort(port) {
     const edges = this.edgesFor(port);
     const free = this.freeEdges(port.kind, port);
@@ -822,8 +844,8 @@ export class PaperSupply extends Supply {
  * What a subclass passes to Converter, on top of the MachineOptions it passes on. Optional for
  * the same reason.
  * @typedef {object} ConverterOptions
- * @property {string | string[]} [input]
- * @property {string | string[]} [output]
+ * @property {Item | Item[]} [input]
+ * @property {Item | Item[]} [output]
  * @property {number} [seconds]
  * @property {number} [yields]
  * @property {number} [capacity]
