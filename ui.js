@@ -12,23 +12,6 @@ const TOOL_NAMES = {
   upgrade: "Upgrade",
 };
 
-function money(n) {
-  return `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString()}`;
-}
-
-function perSecond(n) {
-  return `$${n.toFixed(1)}/s`;
-}
-
-// Like perSecond, with the minus sign before the $.
-function signedPerSecond(n) {
-  return `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(1)}/s`;
-}
-
-function zineRate(n) {
-  return n.toFixed(1);
-}
-
 // When a record was reached: game time, "–" if not yet, or "Unknown" for old saves.
 function reachedAt(time) {
   if (time === null) return "–";
@@ -53,12 +36,6 @@ const SCORE_ROWS = [
   { label: "Floor used", show: (card) => `${card.used} (${Math.round((100 * card.used) / (card.cols * card.rows))}%)` },
   { label: "Floor usage ratio", show: (card) => card.ratio.toFixed(2) },
 ];
-
-// Seconds as m:ss.
-function clock(seconds) {
-  const s = Math.max(0, Math.ceil(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 // Only touch the DOM when the text actually changed.
 function setText(el, text) {

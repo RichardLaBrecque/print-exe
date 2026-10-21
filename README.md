@@ -35,7 +35,11 @@ Plain JavaScript files loaded in order by `index.html`:
 
 | File | What's in it |
 |---|---|
-| `machines.js` | Items, trays, the base `Machine` class and desktop machines |
+| `grid.js` | The floor grid: square size, the four directions, and stepping between squares |
+| `format.js` | How money, rates and clocks read on screen |
+| `draw.js` | Canvas helpers shared by everything that draws |
+| `items.js` | Every item, the press jobs, and each item's icon |
+| `machines.js` | Trays, the base `Machine` class and desktop machines |
 | `production.js` | Tier-2 machines: presses, sheeter, binders, palletizer, truck dock |
 | `belts.js` | Belts, splitters, bridges and how items move between them |
 | `catalog.js` | What the Shop sells, and the licenses |
