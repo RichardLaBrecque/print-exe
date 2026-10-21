@@ -94,6 +94,7 @@ const Save = {
       zinesSold: game.zinesSold,
       firstTruck: game.firstTruck,
       milestones: { ...game.milestones },
+      sales: game.sales.map((sale) => ({ ...sale })),
       zineSales: game.zineSales.map((sale) => ({ ...sale })),
       bestZinesPerSecond: game.bestZinesPerSecond,
       beltsUnlocked: game.beltsUnlocked,
@@ -146,6 +147,9 @@ const Save = {
       beltsUnlocked: data.beltsUnlocked ?? true,
       firstTruck: data.firstTruck ?? null, // saves from before the scorecard win on their next truck
       milestones: data.milestones ? { ...data.milestones } : oldSaveMilestones(data),
+      // Saves from before the sales window rebuild it from the ledger's sale lines
+      sales: (data.sales ?? data.ledger.entries.filter((entry) => entry.kind === "sale"))
+        .map(({ time, amount }) => ({ time, amount })),
       zineSales: (data.zineSales ?? []).map((sale) => ({ ...sale })),
       bestZinesPerSecond: data.bestZinesPerSecond ?? 0,
       portHighlightUntil: 0,

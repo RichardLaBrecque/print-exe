@@ -1,7 +1,8 @@
 // Game state, camera, input and the render loop.
 
 const TAP_SLOP = 8; // screen px a pointer can move before a tap becomes a drag
-const LEDGER_KEEP = 200; // recent ledger entries kept for the list and rate
+const LEDGER_KEEP = 200; // recent ledger entries kept for the Ledger's list
+const INCOME_SECONDS = 60; // income is averaged over this window, so sales are kept this long
 
 // Running costs and the fail state. Rent and machine upkeep are billed every minute. A bill can
 // take cash below $0; you then have GRACE_SECONDS to get back to $0 or you go bankrupt.
@@ -111,6 +112,7 @@ const Game = {
   zinesSold: 0,
   firstTruck: null, // the scorecard() numbers from when the first full truck left: the soft win
   milestones: { production: null, profit10k: null, profit100k: null },
+  sales: [], // { time, amount } for the last INCOME_SECONDS, for the income rate
   zineSales: [], // { time, count } for the last ZINE_RATE_SECONDS, from Outboxes and trucks
   bestZinesPerSecond: 0,
   beltsUnlocked: false,
@@ -147,6 +149,7 @@ const Game = {
     this.cash += amount;
     this.ledger.totalEarned += amount;
     this.ledger.salesCount += 1;
+    this.sales.push({ time: this.time, amount });
     this.record(amount, label, "sale");
   },
 
@@ -186,10 +189,12 @@ const Game = {
     this.buildBatch.clear();
   },
 
+  // From `sales`, not the ledger: the ledger keeps only its last LEDGER_KEEP lines, which a busy
+  // shop writes in under a minute. Sales are kept for INCOME_SECONDS, so `seconds` can't be longer.
   earnedInLast(seconds) {
-    return this.ledger.entries
-      .filter((entry) => entry.kind === "sale" && entry.time >= this.time - seconds)
-      .reduce((sum, entry) => sum + entry.amount, 0);
+    return this.sales
+      .filter((sale) => sale.time >= this.time - seconds)
+      .reduce((sum, sale) => sum + sale.amount, 0);
   },
 
   // Floor expansion --------------------------------------------------------------
@@ -732,7 +737,7 @@ const Game = {
   },
 
   incomePerSecond() {
-    return this.earnedInLast(60) / 60;
+    return this.earnedInLast(INCOME_SECONDS) / INCOME_SECONDS;
   },
 
   // Outboxes sell one Zine at a time; a truck sells every zine on its pallets at once.
@@ -750,8 +755,10 @@ const Game = {
     return this.ledger.totalEarned - this.ledger.totalSpent;
   },
 
-  // Stamp each record the first time it's reached, and keep the best Zines/s.
+  // Drop sales older than their rate windows, stamp each record the first time it's reached,
+  // and keep the best Zines/s.
   updateRecords() {
+    this.sales = this.sales.filter((sale) => sale.time >= this.time - INCOME_SECONDS);
     this.zineSales = this.zineSales.filter((sale) => sale.time >= this.time - ZINE_RATE_SECONDS);
     this.bestZinesPerSecond = Math.max(this.bestZinesPerSecond, this.zinesPerSecond());
 
