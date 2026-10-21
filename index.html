@@ -421,6 +421,13 @@
     .score-table td:not(:first-child) { padding-left: 12px; text-align: right; font-weight: bold; }
     .score-note { margin: 0; font-size: 11px; line-height: 1.4; color: #404040; }
 
+    /* Challenges: one row per challenge, with its rules and a button to start it */
+    .challenge-intro { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+    .challenge { display: flex; align-items: center; gap: 8px; padding: 6px; background: #fff; }
+    .challenge + .challenge { border-top: 1px solid #c0c0c0; }
+    .challenge p { flex: 1; margin: 0; font-size: 12px; line-height: 1.4; }
+    .challenge button { min-width: 64px; height: 24px; border: 0; font: inherit; cursor: pointer; }
+
     /* Ledger entries print on continuous-feed green-bar paper: bands two lines tall, with
        tractor-feed holes and a perforation down each edge. "local" scrolls the paper with the lines. */
     .list {
@@ -581,6 +588,18 @@
     </div>
   </div>
 
+  <div id="challenges" class="window raised" hidden>
+    <div class="title-bar">
+      <span>Challenges.exe</span>
+      <button id="challenges-close" class="raised" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="window-body">
+      <p class="challenge-intro">Each challenge starts a new shop with its own rules. Your
+        current shop is lost unless you Save to File first.</p>
+      <div id="challenge-list" class="sunken"></div>
+    </div>
+  </div>
+
   <div id="taskbar">
     <div id="start-menu" class="raised" hidden>
       <div class="banner"><span><b>Print</b>95</span></div>
@@ -597,6 +616,7 @@
         <li><button type="button" data-open="shop"><span class="check"></span>Shop...</button></li>
         <li><button type="button" data-open="ledger"><span class="check"></span>Ledger...</button></li>
         <li><button type="button" data-open="scorecard"><span class="check"></span>Scorecard...</button></li>
+        <li><button type="button" data-open="challenges"><span class="check"></span>Challenges...</button></li>
         <li><button type="button" data-open="help"><span class="check"></span>How to Play...</button></li>
         <li class="sep" role="separator"></li>
         <li><button type="button" data-action="fit"><span class="check"></span>View Whole Floor<span class="key">F</span></button></li>
@@ -628,18 +648,19 @@
   <script type="importmap">
     {
       "imports": {
-        "./grid.js": "./grid.js?v=2026-10-20.12",
-        "./format.js": "./format.js?v=2026-10-20.12",
-        "./draw.js": "./draw.js?v=2026-10-20.12",
-        "./items.js": "./items.js?v=2026-10-20.12",
-        "./belts.js": "./belts.js?v=2026-10-20.12",
-        "./machines.js": "./machines.js?v=2026-10-20.12",
-        "./production.js": "./production.js?v=2026-10-20.12",
-        "./catalog.js": "./catalog.js?v=2026-10-20.12",
-        "./game.js": "./game.js?v=2026-10-20.12",
-        "./save.js": "./save.js?v=2026-10-20.12",
-        "./ui.js": "./ui.js?v=2026-10-20.12",
-        "./main.js": "./main.js?v=2026-10-20.12"
+        "./grid.js": "./grid.js?v=2026-10-21.1",
+        "./format.js": "./format.js?v=2026-10-21.1",
+        "./draw.js": "./draw.js?v=2026-10-21.1",
+        "./items.js": "./items.js?v=2026-10-21.1",
+        "./belts.js": "./belts.js?v=2026-10-21.1",
+        "./machines.js": "./machines.js?v=2026-10-21.1",
+        "./production.js": "./production.js?v=2026-10-21.1",
+        "./catalog.js": "./catalog.js?v=2026-10-21.1",
+        "./challenges.js": "./challenges.js?v=2026-10-21.1",
+        "./game.js": "./game.js?v=2026-10-21.1",
+        "./save.js": "./save.js?v=2026-10-21.1",
+        "./ui.js": "./ui.js?v=2026-10-21.1",
+        "./main.js": "./main.js?v=2026-10-21.1"
       }
     }
   </script>

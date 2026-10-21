@@ -10,6 +10,7 @@ import { HAND } from "./items.js";
 import { Belt, Bridge, ExpressBelt, Splitter } from "./belts.js";
 import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, TrashCan } from "./machines.js";
 import { Finisher, Palletizer, PaperRollRack, PerfectBinder, RollPress, SaddleStitcher, SheetFedPress, Sheeter, TruckDock } from "./production.js";
+import { CHALLENGES } from "./challenges.js";
 import { BELTS_UNLOCK_ZINES, Camera, MILESTONE_UNKNOWN } from "./game.js";
 
 /** @import { Item } from "./items.js" */
@@ -24,6 +25,7 @@ import { BELTS_UNLOCK_ZINES, Camera, MILESTONE_UNKNOWN } from "./game.js";
  * @property {Item | null} hand
  * @property {number} time
  * @property {{ cols: number, rows: number }} floor
+ * @property {string | null} [challenge] the CHALLENGES key, or null for a normal shop
  * @property {string[]} licenses
  * @property {number} nextBillIn
  * @property {number} [jamUpkeepOwed]
@@ -129,6 +131,7 @@ export const Save = {
       hand: game.hand,
       time: game.time,
       floor: { ...game.floor },
+      challenge: game.challenge,
       licenses: [...game.licenses],
       nextBillIn: game.nextBillIn,
       jamUpkeepOwed: game.jamUpkeepOwed,
@@ -160,6 +163,9 @@ export const Save = {
     if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
     data = renameOldItems(data);
 
+    const challenge = data.challenge ?? null; // saves from before challenges are normal shops
+    if (challenge !== null && !CHALLENGES[challenge]) throw new Error(`Unknown challenge in save: ${challenge}`);
+
     const machines = data.machines.map((s) => {
       const build = MACHINE_TYPES[s.type];
       if (!build) throw new Error(`Unknown machine in save: ${s.type}`);
@@ -181,6 +187,7 @@ export const Save = {
       hand: data.hand,
       time: data.time,
       floor: { ...data.floor },
+      challenge,
       licenses: new Set(data.licenses),
       nextBillIn: data.nextBillIn,
       jamUpkeepOwed: data.jamUpkeepOwed ?? 0,
@@ -295,10 +302,23 @@ export const Save = {
     location.reload();
   },
 
-  // Forget the autosave and start fresh.
-  newShop() {
+  // Forget the autosave and start fresh. A challenge's key goes in the address, since storage
+  // may be blocked, and startup reads it with challengeToStart.
+  newShop(challenge = null) {
     this.leaving = true;
     this.clear();
-    location.reload();
+    if (challenge) location.search = `?challenge=${encodeURIComponent(challenge)}`;
+    else location.reload();
+  },
+
+  // The challenge New Shop asked for, if any, taken out of the address so a later reload
+  // doesn't start it again.
+  challengeToStart() {
+    const url = new URL(location.href);
+    const key = url.searchParams.get("challenge");
+    if (key === null) return null;
+    url.searchParams.delete("challenge");
+    history.replaceState(null, "", url);
+    return CHALLENGES[key] ? key : null;
   },
 };

@@ -2,6 +2,7 @@
 
 import { clock, money, perSecond, signedPerSecond, zineRate } from "./format.js";
 import { CATALOG, LICENSES } from "./catalog.js";
+import { CHALLENGES } from "./challenges.js";
 import { BELTS_UNLOCK_ZINES, MILESTONE_UNKNOWN } from "./game.js";
 /** @import { Tool } from "./game.js" */
 
@@ -55,6 +56,7 @@ export const UI = {
     this.buyButtons = this.buildShop(onBuy);
     document.getElementById("shop-close").addEventListener("click", () => this.toggleWindow(this.shopEl));
 
+    this.initChallenges(onNewShop);
     this.initStartMenu(onTool, onFit);
     this.initFileMenu({ onNewShop, onSaveFile, onOpenFile });
 
@@ -121,22 +123,25 @@ export const UI = {
     });
   },
 
-  // Plain text for sharing.
+  // Plain text for sharing. A challenge's name goes in the heading, so its numbers aren't
+  // compared with a normal shop's.
   scorecardText(game) {
     const line = (card) => SCORE_ROWS.map((scoreRow) => `${scoreRow.label} ${scoreRow.show(card)}`).join(" · ");
     const first = game.firstTruck ? line(game.firstTruck) : "not yet";
     const records = RECORD_ROWS.map((recordRow) => `${recordRow.label} ${recordRow.show(game)}`).join(" · ");
-    return `Print95 scorecard\nFirst truck: ${first}\nNow: ${line(game.scorecard())}\nRecords: ${records}`;
+    const heading = game.challenge ? `Print95 scorecard: ${CHALLENGES[game.challenge].name}` : "Print95 scorecard";
+    return `${heading}\nFirst truck: ${first}\nNow: ${line(game.scorecard())}\nRecords: ${records}`;
   },
 
   renderScorecard(game) {
     const now = game.scorecard();
     const first = game.firstTruck;
+    const challenge = game.challenge ? `${CHALLENGES[game.challenge].name} challenge. ` : "";
     setText(
       this.scoreGoalEl,
-      first
+      challenge + (first
         ? `First truck shipped at ${clock(first.time)}. The shop keeps running: beat your own numbers.`
-        : "Goal: fill a Truck Dock and send out your first truck. Its numbers are kept here to compare against.",
+        : "Goal: fill a Truck Dock and send out your first truck. Its numbers are kept here to compare against."),
     );
     SCORE_ROWS.forEach((scoreRow, i) => {
       setText(this.scoreCells[i].first, first ? scoreRow.show(first) : "–");
@@ -170,6 +175,31 @@ export const UI = {
     if (!hidden) this.openWindow(this.helpEl);
   },
 
+  // Challenges window: a row per challenge. Starting one replaces the current shop, so it asks first.
+  initChallenges(onNewShop) {
+    this.challengesEl = document.getElementById("challenges");
+    document.getElementById("challenges-close").addEventListener("click", () => this.toggleWindow(this.challengesEl));
+
+    for (const [key, challenge] of Object.entries(CHALLENGES)) {
+      const text = document.createElement("p");
+      const name = document.createElement("b");
+      name.textContent = challenge.name;
+      text.append(name, document.createElement("br"), challenge.description);
+      const start = document.createElement("button");
+      start.type = "button";
+      start.className = "raised";
+      start.textContent = "Start";
+      start.addEventListener("click", () => {
+        const sure = window.confirm(`Start a ${challenge.name} shop? This one is lost unless you Save to File first.`);
+        if (sure) onNewShop(key);
+      });
+      const row = document.createElement("div");
+      row.className = "challenge";
+      row.append(text, start);
+      document.getElementById("challenge-list").append(row);
+    }
+  },
+
   // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape.
   initStartMenu(onTool, onFit) {
     this.startEl = document.getElementById("start");
@@ -197,6 +227,7 @@ export const UI = {
       shop: this.shopEl,
       ledger: document.getElementById("ledger"),
       scorecard: document.getElementById("scorecard"),
+      challenges: this.challengesEl,
       help: this.helpEl,
     };
     for (const button of this.menuEl.querySelectorAll("button[data-open]")) {
@@ -292,6 +323,7 @@ export const UI = {
     this.shopEl.hidden = true;
     this.helpEl.hidden = true;
     this.scorecardEl.hidden = true;
+    this.challengesEl.hidden = true;
     el.hidden = false;
     if (el === this.ledgerEl) this.listedEntries = -1; // rebuild the list now it shows
   },

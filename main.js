@@ -66,7 +66,31 @@ function drawYard() {
   }
   ctx.stroke();
 
+  if (!Game.canWiden()) drawRightYard(fw, fh);
   drawEntrancePlaza();
+}
+
+// When the floor can't grow wider, the yard wraps around the right wall too, with its own
+// planter bed and parking from the top corner down.
+function drawRightYard(fw, fh) {
+  ctx.fillStyle = "#55595f";
+  ctx.fillRect(fw, -YARD, YARD, fh + YARD);
+
+  ctx.fillStyle = "#c9c5bc";
+  ctx.fillRect(fw, 0, PLANTER + 3, fh);
+  ctx.fillStyle = "#6fa84a";
+  ctx.fillRect(fw, 0, PLANTER, fh);
+  ctx.fillStyle = "#4e8a33";
+  for (let y = STALL / 2; y < fh; y += STALL) drawShrub(fw + PLANTER / 2, y, 5);
+
+  ctx.strokeStyle = "#f2f2f4";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let y = 0; y <= fh; y += STALL) {
+    ctx.moveTo(fw + PLANTER + 6, y);
+    ctx.lineTo(fw + YARD - 6, y);
+  }
+  ctx.stroke();
 }
 
 function drawShrub(x, y, r) {
@@ -659,15 +683,18 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-// Pick up the autosaved shop, if there is one, before the first frame.
+// Pick up the autosaved shop, if there is one, before the first frame. Without one, start
+// the challenge New Shop asked for, if any.
 const saved = Save.read(Game);
+const challenge = Save.challengeToStart();
+if (saved !== "restored" && challenge) Game.startChallenge(challenge);
 for (const machine of Game.machines) Game.turnPortsInward(machine);
 
 UI.init({
   onTool: (tool) => Game.setTool(tool),
   onBuy: (entry) => Game.buy(entry),
   onFit: () => Camera.fit(),
-  onNewShop: () => Save.newShop(),
+  onNewShop: (challengeKey) => Save.newShop(challengeKey),
   onSaveFile: () => Save.download(Game),
   onOpenFile: (file) => Save.open(file, Game),
 });
