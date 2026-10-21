@@ -415,6 +415,15 @@ const UI = {
     window.addEventListener("keydown", restart);
   },
 
+  // Message box for an error that stopped the game.
+  showCrash(error) {
+    this.showDialog(
+      "Print95",
+      `PRINTSHOP.EXE has stopped because of an error: ${error?.message ?? error}. ` +
+        "To keep your shop, choose Save to File from the Start menu, then reload the page.",
+    );
+  },
+
   // Win95 message box with an OK button.
   showDialog(title, text) {
     setText(document.getElementById("dialog-title"), title);

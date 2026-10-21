@@ -1496,8 +1496,16 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  Game.update(dt);
-  render();
+  try {
+    Game.update(dt);
+    render();
+  } catch (error) {
+    // Stop instead of running on in a broken state, and say so. The Start menu is plain DOM
+    // and still works, so the shop can be saved to a file.
+    console.error(error);
+    UI.showCrash(error);
+    return;
+  }
   requestAnimationFrame(frame);
 }
 
