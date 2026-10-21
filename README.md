@@ -49,3 +49,15 @@ Plain JavaScript modules. `index.html` starts `main.js`, and each file imports w
 | `main.js` | Drawing the floor, input, the frame loop and startup |
 
 When releasing a change, bump every `?v=` in the import map in `index.html` so browsers load the new files.
+
+## Checks
+
+The game needs nothing installed, but there are type checks and a linter for development. They run on Node 24, which `mise.toml` sets:
+
+```sh
+npm install
+npm run check   # TypeScript checks the JavaScript, using its JSDoc comments
+npm run lint    # ESLint
+```
+
+The type checks catch mistakes on classes such as `Tray`, `Machine` and `Belt`. In JavaScript files, TypeScript treats plain objects such as `Game` as open-ended, so it doesn't catch a misspelled property on them.

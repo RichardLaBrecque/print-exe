@@ -1,0 +1,16 @@
+{
+  "name": "print-exe",
+  "private": true,
+  "description": "Development checks for Print.exe. The game itself has no dependencies and no build step.",
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "typescript": "^7.0.2"
+  }
+}

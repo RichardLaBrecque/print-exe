@@ -97,6 +97,29 @@ export class Tray {
   }
 }
 
+/**
+ * What a subclass passes to Machine. Every machine needs col, row, cols, rows and accent, but
+ * subclasses pass some of them through spreads (`...at`, `...rest`) the type checker can't
+ * follow, so they're all optional here.
+ * @typedef {object} MachineOptions
+ * @property {number} [col]
+ * @property {number} [row]
+ * @property {number} [cols]
+ * @property {number} [rows]
+ * @property {string} [accent]
+ * @property {number} [upkeep]
+ * @property {string} [description]
+ * @property {string} [beltNote]
+ * @property {Tray | null} [inTray]
+ * @property {{ label: string, tray: Tray }[] | null} [inputs]
+ * @property {Tray | null} [outTray]
+ * @property {boolean} [portIn]
+ * @property {boolean} [portOut]
+ * @property {number} [portRate]
+ * @property {boolean} [wallOnly]
+ * @property {boolean} [jams]
+ */
+
 export class Machine {
   // Give `inTray` for one input, or `inputs: [{ label, tray }]` for several. Inputs stack
   // down the first column, one share of the rows each, so a belt feeds whichever it points at.
@@ -112,6 +135,10 @@ export class Machine {
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
   //
   // `jams` machines pay more upkeep while their OUT tray stays full (see JAM_CYCLES_PER_STEP).
+  /**
+   * @param {string} title
+   * @param {MachineOptions} options
+   */
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "", beltNote = "",
     inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, portRate = BELT_SPEED,
@@ -139,6 +166,7 @@ export class Machine {
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.jams = jams;
     this.jamSeconds = 0; // how long the OUT tray has been full without a break, grace included
+    this.seconds = undefined; // how long one job takes, set by machines with timed jobs (see cycleSeconds)
     this.shake = 0;
   }
 
@@ -723,7 +751,7 @@ export class Supply extends Machine {
     this.pending = this.delivery.seconds;
   }
 
-  bodyHint(game) {
+  bodyHint(_game) {
     if (this.pending > 0) return "Delivery on the way.";
     if (!this.hasRoomForDelivery()) return `No room for ${this.delivery.amount} more. Use some first.`;
     return `Need ${money(this.delivery.price)} for a delivery.`;
@@ -790,11 +818,27 @@ export class PaperSupply extends Supply {
   }
 }
 
+/**
+ * What a subclass passes to Converter, on top of the MachineOptions it passes on. Optional for
+ * the same reason.
+ * @typedef {object} ConverterOptions
+ * @property {string | string[]} [input]
+ * @property {string | string[]} [output]
+ * @property {number} [seconds]
+ * @property {number} [yields]
+ * @property {number} [capacity]
+ * @property {number} [outCapacity]
+ */
+
 // Turns one IN item into one OUT item every `seconds`, on its own, while there's
 // something in and room out. Printers, presses, sheeters and binders are all this.
 // `yields` items come out per item in, e.g. a Sheeter cuts 1 roll into 10 sheets.
 // `input` and `output` are one item, or a list for machines that handle several job types.
 export class Converter extends Machine {
+  /**
+   * @param {string} title
+   * @param {ConverterOptions & MachineOptions} options
+   */
   constructor(title, { input, output, seconds, yields = 1, capacity = TRAY_SIZE, outCapacity = capacity, ...rest }) {
     super(title, {
       ...rest,

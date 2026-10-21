@@ -146,7 +146,7 @@ export const UI = {
   // How to Play window. Opens on load unless "Don't show this again" was ticked before.
   // Browser storage can be blocked (private windows, previews), so every access is guarded.
   initHelp() {
-    const hideBox = document.getElementById("help-hide");
+    const hideBox = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
     const close = () => {
       this.helpEl.hidden = true;
       try {
@@ -158,7 +158,7 @@ export const UI = {
     document.getElementById("help-ok").addEventListener("click", close);
     document.getElementById("help-close").addEventListener("click", close);
 
-    let hidden = false;
+    let hidden;
     try {
       hidden = localStorage.getItem(HELP_HIDDEN_KEY) === "1";
     } catch {
@@ -225,7 +225,7 @@ export const UI = {
   // Start menu: Save to File, Open Save File, New Shop.
   initFileMenu({ onNewShop, onSaveFile, onOpenFile }) {
     const item = (action) => this.menuEl.querySelector(`[data-action="${action}"]`);
-    const picker = document.getElementById("open-file");
+    const picker = /** @type {HTMLInputElement} */ (document.getElementById("open-file"));
 
     item("save-file").addEventListener("click", () => {
       this.setMenuOpen(false);

@@ -1,0 +1,17 @@
+{
+  // Type checks for the game's plain JavaScript, using the JSDoc comments for types.
+  // Nothing is compiled: the browser runs the .js files as they are.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": ["*.js"],
+  "exclude": ["eslint.config.js"]
+}

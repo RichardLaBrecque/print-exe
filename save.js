@@ -195,7 +195,7 @@ export const Save = {
   // "failed" when there is one that can't be loaded. A new shop then starts, and its autosave
   // will replace the old save, so the old one is backed up first.
   read(game) {
-    let text = null;
+    let text;
     try {
       text = localStorage.getItem(SAVE_KEY);
     } catch {

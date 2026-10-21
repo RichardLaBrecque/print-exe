@@ -10,7 +10,7 @@ import { UI } from "./ui.js";
 
 const TAP_SLOP = 8; // screen px a pointer can move before a tap becomes a drag
 
-const canvas = document.getElementById("game");
+const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("game"));
 const ctx = canvas.getContext("2d");
 
 function layout() {
