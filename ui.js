@@ -509,14 +509,18 @@ const UI = {
       return;
     }
 
-    // Newest first
+    // Newest first. Labels can come from a save file, so they go in as text, never as HTML.
     this.listEl.replaceChildren(...ledger.entries.toReversed().map((entry) => {
+      const time = document.createElement("span");
+      time.textContent = entry.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      const amount = document.createElement("span");
+      amount.className = entry.amount < 0 ? "amount spent" : "amount";
+      amount.textContent = entry.amount >= 0 ? `+${money(entry.amount)}` : `-${money(-entry.amount)}`;
       const row = document.createElement("div");
       row.className = "row";
-      const time = entry.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
-      const amount = entry.amount >= 0 ? `+${money(entry.amount)}` : `-${money(-entry.amount)}`;
-      const spent = entry.amount < 0 ? " spent" : "";
-      row.innerHTML = `<span>${time}</span><span>${entry.label}</span><span class="amount${spent}">${amount}</span>`;
+      row.append(time, label, amount);
       return row;
     }));
   },
