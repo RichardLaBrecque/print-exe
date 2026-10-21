@@ -5,6 +5,13 @@
 // Browser storage can be missing or blocked (private windows, previews), so every
 // access is wrapped: the game still runs, it just won't remember.
 
+import { tileKey } from "./grid.js";
+import { HAND } from "./items.js";
+import { Belt, Bridge, ExpressBelt, Splitter } from "./belts.js";
+import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, TrashCan } from "./machines.js";
+import { Finisher, Palletizer, PaperRollRack, PerfectBinder, RollPress, SaddleStitcher, SheetFedPress, Sheeter, TruckDock } from "./production.js";
+import { BELTS_UNLOCK_ZINES, Camera, MILESTONE_UNKNOWN } from "./game.js";
+
 const SAVE_KEY = "print95.save";
 const BACKUP_KEY = "print95.save.backup"; // a save that failed to load, kept before the autosave replaces it
 const SAVE_VERSION = 1;
@@ -63,7 +70,7 @@ function renameOldItems(data) {
   return JSON.parse(text);
 }
 
-const Save = {
+export const Save = {
   // Set once New Shop or Open Save File has replaced the autosave and is reloading. The page's
   // pagehide/visibilitychange autosave would otherwise write the old shop back over it.
   leaving: false,
@@ -170,7 +177,13 @@ const Save = {
   // Autosave ------------------------------------------------------------------------------
 
   write(game) {
-    if (game.bankrupt || this.leaving) return;
+    if (this.leaving) return;
+    // A bankrupt shop is over: its save goes, so a reload after the blue screen starts a new shop.
+    // The reload's pagehide comes here, so the save is gone before the new page reads it.
+    if (game.bankrupt) {
+      this.clear();
+      return;
+    }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(this.snapshot(game)));
     } catch {

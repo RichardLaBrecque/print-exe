@@ -622,17 +622,27 @@
     <div id="clock" class="panel sunken">12:00 PM</div>
   </div>
 
-  <!-- Bump ?v= on every release so browsers fetch the new scripts instead of cached ones. -->
-  <script src="grid.js?v=2026-10-20.7"></script>
-  <script src="format.js?v=2026-10-20.7"></script>
-  <script src="draw.js?v=2026-10-20.7"></script>
-  <script src="items.js?v=2026-10-20.7"></script>
-  <script src="machines.js?v=2026-10-20.7"></script>
-  <script src="production.js?v=2026-10-20.7"></script>
-  <script src="belts.js?v=2026-10-20.7"></script>
-  <script src="catalog.js?v=2026-10-20.7"></script>
-  <script src="save.js?v=2026-10-20.7"></script>
-  <script src="ui.js?v=2026-10-20.7"></script>
-  <script src="game.js?v=2026-10-20.7"></script>
+  <!-- The game is ES modules, started from main.js. Every import goes through this import map,
+       so bumping each ?v= here on every release makes browsers fetch the new files instead of
+       cached ones. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "./grid.js": "./grid.js?v=2026-10-20.8",
+        "./format.js": "./format.js?v=2026-10-20.8",
+        "./draw.js": "./draw.js?v=2026-10-20.8",
+        "./items.js": "./items.js?v=2026-10-20.8",
+        "./belts.js": "./belts.js?v=2026-10-20.8",
+        "./machines.js": "./machines.js?v=2026-10-20.8",
+        "./production.js": "./production.js?v=2026-10-20.8",
+        "./catalog.js": "./catalog.js?v=2026-10-20.8",
+        "./game.js": "./game.js?v=2026-10-20.8",
+        "./save.js": "./save.js?v=2026-10-20.8",
+        "./ui.js": "./ui.js?v=2026-10-20.8",
+        "./main.js": "./main.js?v=2026-10-20.8"
+      }
+    }
+  </script>
+  <script type="module">import "./main.js";</script>
 </body>
 </html>

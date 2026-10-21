@@ -21,7 +21,7 @@ Rent and upkeep are billed every minute. If your cash stays below $0 for a minut
 
 ## Run it locally
 
-There's no build step. Open `index.html` in a browser, or serve the folder:
+There's no build step, but the game is made of JavaScript modules, and browsers only load those from a web server. Opening `index.html` straight from your disk won't work. Serve the folder instead:
 
 ```sh
 python3 -m http.server 8000
@@ -31,7 +31,7 @@ Then open http://localhost:8000.
 
 ## Code
 
-Plain JavaScript files loaded in order by `index.html`:
+Plain JavaScript modules. `index.html` starts `main.js`, and each file imports what it uses from the others. Each file only imports from files above it in this table:
 
 | File | What's in it |
 |---|---|
@@ -39,11 +39,13 @@ Plain JavaScript files loaded in order by `index.html`:
 | `format.js` | How money, rates and clocks read on screen |
 | `draw.js` | Canvas helpers shared by everything that draws |
 | `items.js` | Every item, the press jobs, and each item's icon |
+| `belts.js` | Belts, splitters, bridges and how items move between them |
 | `machines.js` | Trays, the base `Machine` class and desktop machines |
 | `production.js` | Tier-2 machines: presses, sheeter, binders, palletizer, truck dock |
-| `belts.js` | Belts, splitters, bridges and how items move between them |
 | `catalog.js` | What the Shop sells, and the licenses |
+| `game.js` | Game state, money and the camera |
+| `save.js` | The autosave and save files |
 | `ui.js` | Taskbar, Start menu and Win95 windows |
-| `game.js` | Game state, money, camera, input and the render loop |
+| `main.js` | Drawing the floor, input, the frame loop and startup |
 
-When releasing a change, bump the `?v=` on the script tags in `index.html` so browsers load the new files.
+When releasing a change, bump every `?v=` in the import map in `index.html` so browsers load the new files.

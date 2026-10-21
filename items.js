@@ -1,7 +1,9 @@
 // Items, the press jobs, and the icon drawn for each item.
 
+import { INK } from "./draw.js";
+
 // Every item in the game, by display name. Also what the player's hand can hold.
-const HAND = {
+export const HAND = {
   EMPTY: null,
   // The four states of paper: blank or printed, sheet or roll. Printed paper also carries
   // the job it was printed for (see JOBS). Saddle-stitch sheets come from either a desktop
@@ -22,26 +24,26 @@ const HAND = {
 };
 
 // Press job settings: Saddle-Stitch, Cover or Guts, in the order a tap cycles them.
-const JOBS = [
+export const JOBS = [
   { name: "Saddle-Stitch", label: "SADDLE", roll: HAND.SADDLE_ROLL, sheet: HAND.SADDLE_SHEET, color: "#9b8cff" },
   { name: "Cover", label: "COVER", roll: HAND.COVER_ROLL, sheet: HAND.COVER_SHEET, color: "#e5703a" },
   { name: "Guts", label: "GUTS", roll: HAND.GUTS_ROLL, sheet: HAND.GUTS_SHEET, color: "#4caf50" },
 ];
-const PRINTED_ROLLS = JOBS.map((job) => job.roll);
-const PRINTED_SHEETS = JOBS.map((job) => job.sheet);
+export const PRINTED_ROLLS = JOBS.map((job) => job.roll);
+export const PRINTED_SHEETS = JOBS.map((job) => job.sheet);
 
 // The job a printed sheet or roll belongs to, or undefined for anything else.
-function jobOf(item) {
+export function jobOf(item) {
   return JOBS.find((job) => job.roll === item || job.sheet === item);
 }
 
 // Rolls are too heavy to carry; only belts move them.
-function canCarry(item) {
+export function canCarry(item) {
   return item !== HAND.BLANK_ROLL && !PRINTED_ROLLS.includes(item);
 }
 
 // Item icons, drawn into an s-by-s box at (x, y).
-function drawItem(ctx, item, x, y, s) {
+export function drawItem(ctx, item, x, y, s) {
   ctx.strokeStyle = INK;
   if (item === HAND.BLANK_SHEET) {
     ctx.fillStyle = "#ffffff";

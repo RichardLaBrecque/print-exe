@@ -1,5 +1,9 @@
 // The taskbar, Start menu and windows are plain DOM. Everything else is drawn on the canvas.
 
+import { clock, money, perSecond, signedPerSecond, zineRate } from "./format.js";
+import { CATALOG, LICENSES } from "./catalog.js";
+import { BELTS_UNLOCK_ZINES, MILESTONE_UNKNOWN } from "./game.js";
+
 const HELP_HIDDEN_KEY = "print95.hideHelp";
 
 const TOOL_NAMES = {
@@ -42,7 +46,7 @@ function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
 }
 
-const UI = {
+export const UI = {
   init({ onTool, onBuy, onFit, onNewShop, onSaveFile, onOpenFile }) {
     this.shopEl = document.getElementById("shop");
     this.helpEl = document.getElementById("help");

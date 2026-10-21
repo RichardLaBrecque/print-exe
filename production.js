@@ -25,9 +25,15 @@
 // 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds with no limit (see
 // JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
 
+import { money } from "./format.js";
+import { Draw, INK } from "./draw.js";
+import { HAND, JOBS, PRINTED_ROLLS, PRINTED_SHEETS, drawItem, jobOf } from "./items.js";
+import { EXPRESS_SPEED } from "./belts.js";
+import { Converter, Machine, Supply, Tray, ZINE_PRICE } from "./machines.js";
+
 const ROLL_PRESS_SECONDS = 5;
 const SHEET_PRESS_SECONDS = 1;
-const SHEETS_PER_ROLL = 10;
+export const SHEETS_PER_ROLL = 10;
 const SHEETER_SECONDS = 5;
 const STITCHER_SECONDS = 0.5;
 const PRODUCTION_TRAY_SIZE = 10;
@@ -59,7 +65,7 @@ function palletValue(pallet) {
 
 // Tier 2 paper: Blank Rolls by the truckload. 10 rolls = 100 sheets for $150,
 // against $2 a sheet for tier 1 paper.
-class PaperRollRack extends Supply {
+export class PaperRollRack extends Supply {
   constructor(at) {
     super("Paper Roll Rack", {
       description: `Holds Blank Rolls. Tap the middle to order 10 rolls (${10 * SHEETS_PER_ROLL} sheets of paper) for $150. ` +
@@ -119,7 +125,7 @@ class Press extends Converter {
 }
 
 // Roll-fed press: prints whole rolls for any job, including Guts.
-class RollPress extends Press {
+export class RollPress extends Press {
   constructor(at) {
     super("Roll Press", {
       description: `Prints Blank Rolls into printed rolls for its job (Saddle-Stitch, Cover or Guts), one every ${ROLL_PRESS_SECONDS} seconds. Tap the middle to switch jobs.`,
@@ -162,7 +168,7 @@ class RollPress extends Press {
 }
 
 // Sheet-fed press: prints Blank Sheets one at a time, for any job.
-class SheetFedPress extends Press {
+export class SheetFedPress extends Press {
   constructor(at) {
     super("Sheet-Fed Press", {
       description: "Prints Blank Sheets into Printed Sheets for its job (Saddle-Stitch, Cover or Guts), one a second. Tap the middle to switch jobs.",
@@ -205,7 +211,7 @@ class SheetFedPress extends Press {
 // Cuts any roll into SHEETS_PER_ROLL sheets of the same kind: a blank roll into Blank Sheets
 // (for a Sheet-Fed Press), a printed roll into Printed Sheets of its job. Its 2 sheets/s
 // output needs an Express Belt.
-class Sheeter extends Converter {
+export class Sheeter extends Converter {
   constructor(at) {
     super("Sheeter", {
       description: `Cuts any roll into ${SHEETS_PER_ROLL} sheets: blank rolls into Blank Sheets, printed rolls into Printed Sheets of the same job. Needs an Express Belt out to keep up.`,
@@ -250,7 +256,7 @@ class Sheeter extends Converter {
 }
 
 // Saddle-stitch binder. Folds and stitches sheets into Zines, four times as fast as an Auto Stapler.
-class SaddleStitcher extends Converter {
+export class SaddleStitcher extends Converter {
   constructor(at) {
     super("Saddle Stitcher", {
       description: "Folds and stitches saddle-stitch Printed Sheets into Zines, two a second.",
@@ -375,7 +381,7 @@ class ZineBinder extends Machine {
 }
 
 // Perfect binder: cover sheets + guts sheets.
-class PerfectBinder extends ZineBinder {
+export class PerfectBinder extends ZineBinder {
   constructor(at) {
     super("Perfect Binder", {
       description: `Binds 1 Cover sheet and ${GUTS_PER_ZINE} Guts sheets into a Perfect-Bound Zine, one a second.`,
@@ -406,7 +412,7 @@ class PerfectBinder extends ZineBinder {
 
 // Inline finisher: cover sheets + a whole guts roll, no sheeter needed.
 // It unrolls one guts roll at a time into SHEETS_PER_ROLL sheets' worth of guts.
-class Finisher extends ZineBinder {
+export class Finisher extends ZineBinder {
   constructor(at) {
     super("Finisher", {
       description: `Binds Cover sheets with a whole Guts roll, so no sheeter is needed. Makes Perfect-Bound Zines two a second, the fastest way.`,
@@ -472,7 +478,7 @@ class Finisher extends ZineBinder {
 }
 
 // Stacks ZINES_PER_PALLET zines of one kind and stretch-wraps them into one pallet.
-class Palletizer extends Machine {
+export class Palletizer extends Machine {
   constructor(at) {
     super("Palletizer", {
       description: `Wraps ${ZINES_PER_PALLET} zines of one kind into a pallet.`,
@@ -542,7 +548,7 @@ class Palletizer extends Machine {
 }
 
 // Loads pallets onto a truck. When the truck is full it drives off, and you're paid when it delivers.
-class TruckDock extends Machine {
+export class TruckDock extends Machine {
   constructor(at) {
     super("Truck Dock", {
       description: `Loads pallets of any kind onto a truck, which leaves once it has ${PALLETS_PER_TRUCK} and gets paid when it delivers.`,

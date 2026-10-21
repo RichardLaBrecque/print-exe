@@ -4,20 +4,26 @@
 // Footprint layout, one tile column each:  [ IN ] [ body ... ] [ OUT ]
 // A machine without an in or out tray just skips that column.
 
+import { DIRS, TILE } from "./grid.js";
+import { clock, money } from "./format.js";
+import { Draw, INK, drawAnts } from "./draw.js";
+import { HAND, canCarry, drawItem } from "./items.js";
+import { BELT_SPEED } from "./belts.js";
+
 // Production ratios, built around a belt carrying 1 item a second:
 //   2 printers (4 s each) feed 1 Auto Stapler (2 s each),
 //   and 2 Auto Staplers fill 1 belt.
 // The Auto Stapler is still slower than a person tapping quickly.
 const PRINT_SECONDS = 4;
 const AUTO_STAPLE_SECONDS = 2;
-const STAPLER_UPGRADE_COST = 120;
+export const STAPLER_UPGRADE_COST = 120;
 const AUTO_STAPLER_UPKEEP = 6; // $ per minute, up from the Manual Stapler's 2
 // An Outbox ships 2 Zines a second: enough for an Express Belt, or two full belts once upgraded.
 const SHIP_SECONDS = 0.5;
 // The Outbox upgrade adds a second IN port, for less than a second Outbox.
 const OUTBOX_UPGRADE_COST = 50;
 const TRAY_SIZE = 5;
-const ZINE_PRICE = 10;
+export const ZINE_PRICE = 10;
 // Jams: a `jams` machine (tier 2) whose OUT tray stays full pays more upkeep. A tray that is
 // full for under JAM_GRACE_SECONDS doesn't count, so a balanced line that fills for a moment
 // never shows a jam. After that, each step spent full adds 1x, with no limit, so a jam nobody
@@ -29,7 +35,7 @@ const JAM_MIN_STEP_SECONDS = 30;
 
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
-class Tray {
+export class Tray {
   constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false, pullable = true }) {
     this.item = item; // the kind held now; null when it takes anything or a multi-kind tray is empty
     this.kinds = kinds;
@@ -91,7 +97,7 @@ class Tray {
   }
 }
 
-class Machine {
+export class Machine {
   // Give `inTray` for one input, or `inputs: [{ label, tray }]` for several. Inputs stack
   // down the first column, one share of the rows each, so a belt feeds whichever it points at.
   //
@@ -655,7 +661,7 @@ class Machine {
 //
 // With `chute: true` the OUT tray is a single port (see Machine): belts can't pull from it,
 // and it pushes one item a second onto the square its triangle faces.
-class Supply extends Machine {
+export class Supply extends Machine {
   constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, rows = 2, chute = false, ...rest }) {
     const stock = new Tray({ item, capacity });
     stock.count = startStock;
@@ -763,7 +769,7 @@ class Supply extends Machine {
 }
 
 // Tier 1 paper: Blank Sheets, delivered by the ream.
-class PaperSupply extends Supply {
+export class PaperSupply extends Supply {
   constructor(at) {
     super("Paper Supply", {
       description: "Holds Blank Sheets. Take one from its tray, or tap the middle to order 20 more for $40.",
@@ -788,7 +794,7 @@ class PaperSupply extends Supply {
 // something in and room out. Printers, presses, sheeters and binders are all this.
 // `yields` items come out per item in, e.g. a Sheeter cuts 1 roll into 10 sheets.
 // `input` and `output` are one item, or a list for machines that handle several job types.
-class Converter extends Machine {
+export class Converter extends Machine {
   constructor(title, { input, output, seconds, yields = 1, capacity = TRAY_SIZE, outCapacity = capacity, ...rest }) {
     super(title, {
       ...rest,
@@ -872,7 +878,7 @@ class Converter extends Machine {
   }
 }
 
-class DesktopPrinter extends Converter {
+export class DesktopPrinter extends Converter {
   constructor(at) {
     super("Desktop Printer", {
       description: `Prints Blank Sheets into saddle-stitch Printed Sheets, one every ${PRINT_SECONDS} seconds.`,
@@ -909,7 +915,7 @@ class DesktopPrinter extends Converter {
 }
 
 // Manual: tap the body to staple one set of pages into a Zine.
-class ManualStapler extends Machine {
+export class ManualStapler extends Machine {
   constructor(at) {
     super("Manual Stapler", {
       description: "Tap the middle to staple a saddle-stitch Printed Sheet into a Zine.",
@@ -1006,7 +1012,7 @@ class ManualStapler extends Machine {
 }
 
 // Sells Zines dropped in its IN tray, one at a time.
-class Outbox extends Machine {
+export class Outbox extends Machine {
   constructor(at) {
     super("Outbox", {
       description: `Sells Zines for $${ZINE_PRICE} each, up to two a second.`,
@@ -1095,7 +1101,7 @@ class Outbox extends Machine {
 }
 
 // Takes anything you're holding.
-class TrashCan extends Machine {
+export class TrashCan extends Machine {
   constructor(at) {
     super("Trash Can", {
       description: "Throws away anything you drop in it.",
