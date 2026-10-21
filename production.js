@@ -21,9 +21,9 @@
 // triangles push at Express Belt speed, since the Sheeter, Saddle Stitcher and Finisher make
 // 2 items a second; the binders get one IN triangle each for COVER and GUTS.
 //
-// Jams: every machine here with an OUT tray pays more upkeep while that tray stays full. After
-// 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds with no limit (see
-// JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
+// Jams: every machine here with an OUT tray pays more upkeep while that tray has no room for its
+// next job. After 10 seconds blocked it's jammed, then upkeep goes up 1x every 30 seconds with
+// no limit (see JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
 
 import { money } from "./format.js";
 import { Draw, INK } from "./draw.js";
@@ -492,7 +492,7 @@ export class Palletizer extends Machine {
       jams: true,
       accent: "#a0784a",
       inTray: new Tray({ kinds: PALLETS.map((p) => p.zine), capacity: ZINES_PER_PALLET * 2 }),
-      outTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 3 }),
+      outTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 1 }), // any pallet left in it counts as full, so a jam shows
     });
     this.wrapping = false;
     this.making = null; // the kind of pallet being wrapped
@@ -559,7 +559,7 @@ export class TruckDock extends Machine {
       rows: 3,
       portIn: true,
       accent: "#6b7080",
-      inTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: PALLETS_PER_TRUCK }),
+      inTray: new Tray({ kinds: PALLETS.map((p) => p.pallet), capacity: 1 }),
     });
     this.cargo = []; // pallets on the truck; a truck can carry mixed kinds
     this.away = 0; // seconds left on the delivery trip, 0 = docked
@@ -587,7 +587,7 @@ export class TruckDock extends Machine {
   }
 
   bodyHint() {
-    if (this.away > 0) return `Truck is out on delivery. Pallets waiting: ${this.inTray.count}/${PALLETS_PER_TRUCK}.`;
+    if (this.away > 0) return `Truck is out on delivery. Pallets waiting: ${this.inTray.count}/1.`;
     return `Truck loading: ${this.loaded}/${PALLETS_PER_TRUCK} pallets. It leaves when full.`;
   }
 
@@ -608,7 +608,8 @@ export class TruckDock extends Machine {
     }
 
     // Pallets go aboard as they arrive, whatever their kind, so the tray only fills while the
-    // truck is out. The truck leaves only with a full load.
+    // truck is out. It holds just 1, so the rest wait on the belt in any mix of kinds instead of
+    // the tray turning away the other kind. The truck leaves only with a full load.
     while (this.loaded < PALLETS_PER_TRUCK && this.inTray.count > 0) this.cargo.push(this.inTray.take());
     if (this.loaded < PALLETS_PER_TRUCK) return;
     this.away = TRUCK_TRIP_SECONDS;

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DesktopPrinter, ManualStapler, Outbox } from "../machines.js";
-import { RollPress } from "../production.js";
+import { Palletizer, RollPress, Sheeter, TruckDock } from "../production.js";
 import { HAND } from "../items.js";
 
 describe("DesktopPrinter#update", () => {
@@ -103,6 +103,53 @@ describe("Machine#upkeepMultiplier", () => {
 
     assert.equal(press.isJammed(), false);
     assert.equal(press.upkeepMultiplier(), 1);
+  });
+
+  it("jams a Sheeter whose OUT tray has some room but not enough for the next 10 sheets", () => {
+    const game = fakeGame();
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+    for (let i = 0; i < 18; i++) sheeter.outTray.put(HAND.BLANK_SHEET);
+    sheeter.inTray.put(HAND.BLANK_ROLL);
+
+    run(sheeter, 10.25, game);
+
+    assert.equal(sheeter.working, false);
+    assert.equal(sheeter.isJammed(), true);
+  });
+
+  it("jams a Palletizer whose OUT tray holds the other kind of pallet", () => {
+    const game = fakeGame();
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+    palletizer.outTray.put(HAND.SADDLE_PALLET);
+    for (let i = 0; i < 10; i++) palletizer.inTray.put(HAND.PERFECT_ZINE);
+
+    run(palletizer, 10.25, game);
+
+    assert.equal(palletizer.inTray.count, 10);
+    assert.equal(palletizer.isJammed(), true);
+  });
+});
+
+describe("TruckDock#update", () => {
+  it("loads pallets of both kinds onto one truck", () => {
+    const game = fakeGame();
+    const dock = new TruckDock({ col: 0, row: 0 });
+
+    for (const pallet of [HAND.SADDLE_PALLET, HAND.PERFECT_PALLET, HAND.SADDLE_PALLET]) {
+      dock.inTray.put(pallet);
+      run(dock, 0.25, game);
+    }
+
+    assert.deepEqual(dock.cargo, [HAND.SADDLE_PALLET, HAND.PERFECT_PALLET, HAND.SADDLE_PALLET]);
+  });
+
+  it("holds only 1 pallet while the truck is away, so the rest wait on the belt", () => {
+    const dock = new TruckDock({ col: 0, row: 0 });
+    dock.away = 6;
+    dock.inTray.put(HAND.PERFECT_PALLET);
+
+    assert.equal(dock.inTray.accepts(HAND.SADDLE_PALLET), false);
+    assert.equal(dock.inTray.accepts(HAND.PERFECT_PALLET), false);
   });
 });
 

@@ -24,9 +24,11 @@ const SHIP_SECONDS = 0.5;
 const OUTBOX_UPGRADE_COST = 50;
 const TRAY_SIZE = 5;
 export const ZINE_PRICE = 10;
-// Jams: a `jams` machine (tier 2) whose OUT tray stays full pays more upkeep. A tray that is
-// full for under JAM_GRACE_SECONDS doesn't count, so a balanced line that fills for a moment
-// never shows a jam. After that, each step spent full adds 1x, with no limit, so a jam nobody
+// Jams: a `jams` machine (tier 2) that stays blocked by its OUT tray pays more upkeep. Blocked
+// means the tray has no room for the next job (see isBlocked), which for a machine that makes
+// several items a job can be before the tray is full. Blocked for under JAM_GRACE_SECONDS doesn't
+// count, so a balanced line that backs up for a moment never shows a jam. After that, each step
+// spent blocked adds 1x, with no limit, so a jam nobody
 // notices gets expensive. A step is JAM_CYCLES_PER_STEP of its own cycle time, but never shorter
 // than JAM_MIN_STEP_SECONDS, so there's time to spot and fix a jam.
 const JAM_GRACE_SECONDS = 10;
@@ -140,7 +142,7 @@ export class Machine {
   // `wallOnly` machines (Outbox, Truck Dock and the paper supplies) take deliveries in or ship
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
   //
-  // `jams` machines pay more upkeep while their OUT tray stays full (see JAM_CYCLES_PER_STEP).
+  // `jams` machines pay more upkeep while their OUT tray blocks them (see JAM_CYCLES_PER_STEP).
   /**
    * @param {string} title
    * @param {MachineOptions} options
@@ -171,7 +173,7 @@ export class Machine {
     this.portRate = portRate;
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.jams = jams;
-    this.jamSeconds = 0; // how long the OUT tray has been full without a break, grace included
+    this.jamSeconds = 0; // how long the OUT tray has blocked it without a break, grace included
     this.seconds = undefined; // how long one job takes, set by machines with timed jobs (see cycleSeconds)
     this.shake = 0;
   }
@@ -326,11 +328,16 @@ export class Machine {
 
   update(dt, game) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
-    if (this.jams) this.jamSeconds = this.outTray.isFull() ? this.jamSeconds + dt : 0;
+    if (this.jams) this.jamSeconds = this.isBlocked() ? this.jamSeconds + dt : 0;
     if (this.outPort && game.beltsUnlocked) {
       this.portTimer = Math.min(1, this.portTimer + dt * this.portRate);
       if (this.portTimer >= 1 && this.outTray.count > 0 && this.pushOut(game)) this.portTimer = 0;
     }
+  }
+
+  // Whether the OUT tray is stopping the next job. Machines that make several items a job override it.
+  isBlocked() {
+    return this.outTray.isFull();
   }
 
   // How long one job takes, for counting jam cycles. A `jams` machine without `seconds` overrides it.
@@ -338,7 +345,7 @@ export class Machine {
     return this.seconds;
   }
 
-  // How long the OUT tray must stay full for each step up in upkeep.
+  // How long the OUT tray must keep it blocked for each step up in upkeep.
   jamStepSeconds() {
     return Math.max(JAM_CYCLES_PER_STEP * this.cycleSeconds(), JAM_MIN_STEP_SECONDS);
   }
@@ -349,7 +356,7 @@ export class Machine {
     return 1 + Math.floor(this.jammedFor() / this.jamStepSeconds());
   }
 
-  // Jammed once the OUT tray has stayed full past the grace period.
+  // Jammed once the OUT tray has blocked it past the grace period.
   isJammed() {
     return this.jams && this.jamSeconds > JAM_GRACE_SECONDS;
   }
@@ -902,6 +909,12 @@ export class Converter extends Machine {
   hasRoom() {
     if (this.inTray.count === 0) return this.outTray.count + this.yields <= this.outTray.capacity;
     return this.canMake(this.outputFor(this.inTray.item));
+  }
+
+  // Blocked once the current job is done and the next can't fit, e.g. a Sheeter with 11 of 20
+  // sheets can't cut another 10, so it's stuck before its tray is full.
+  isBlocked() {
+    return !this.working && !this.hasRoom();
   }
 
   progress() {
