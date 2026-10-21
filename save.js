@@ -5,7 +5,48 @@
 // Browser storage can be missing or blocked (private windows, previews), so every
 // access is wrapped: the game still runs, it just won't remember.
 
+import { tileKey } from "./grid.js";
+import { HAND } from "./items.js";
+import { Belt, Bridge, ExpressBelt, Splitter } from "./belts.js";
+import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, TrashCan } from "./machines.js";
+import { Finisher, Palletizer, PaperRollRack, PerfectBinder, RollPress, SaddleStitcher, SheetFedPress, Sheeter, TruckDock } from "./production.js";
+import { BELTS_UNLOCK_ZINES, Camera, MILESTONE_UNKNOWN } from "./game.js";
+
+/** @import { Item } from "./items.js" */
+
+/**
+ * A save, as Save.snapshot writes it. The optional fields are missing from saves made before
+ * they existed, and restore fills them in.
+ * @typedef {object} SaveData
+ * @property {number} version
+ * @property {string} savedAt
+ * @property {number} cash
+ * @property {Item | null} hand
+ * @property {number} time
+ * @property {{ cols: number, rows: number }} floor
+ * @property {string[]} licenses
+ * @property {number} nextBillIn
+ * @property {number} [jamUpkeepOwed]
+ * @property {number | null} graceLeft
+ * @property {number} peakIncome
+ * @property {number} [zinesSold]
+ * @property {object | null} [firstTruck] the scorecard from when the first full truck left
+ * @property {{ production: number | null, profit10k: number | null, profit100k: number | null }} [milestones]
+ * @property {{ time: number, amount: number }[]} [sales]
+ * @property {{ time: number, count: number }[]} [zineSales]
+ * @property {number} [bestZinesPerSecond]
+ * @property {boolean} [beltsUnlocked]
+ * @property {number} beltDir
+ * @property {{ totalEarned: number, totalSpent: number, salesCount: number, entryCount: number, entries: LedgerEntry[] }} ledger
+ * @property {{ x: number, y: number, zoom: number }} camera
+ * @property {PieceState[]} machines each machine's saveState()
+ * @property {PieceState[]} belts each belt, splitter and bridge's saveState()
+ */
+/** @typedef {{ at: string, time: number, label: string, amount: number, kind: "sale" | "spend" | "refund" }} LedgerEntry */
+/** @typedef {{ type: string, col: number, row: number, [field: string]: any }} PieceState */
+
 const SAVE_KEY = "print95.save";
+const BACKUP_KEY = "print95.save.backup"; // a save that failed to load, kept before the autosave replaces it
 const SAVE_VERSION = 1;
 const AUTOSAVE_SECONDS = 10;
 
@@ -44,6 +85,7 @@ const OLD_ITEM_NAMES = {
 
 // Saves from before Scorecard records: anything already reached gets MILESTONE_UNKNOWN,
 // since when it happened wasn't kept. The rest are stamped as they're reached.
+/** @param {SaveData} data */
 function oldSaveMilestones(data) {
   const profit = data.ledger.totalEarned - data.ledger.totalSpent;
   const reached = (done) => (done ? MILESTONE_UNKNOWN : null);
@@ -54,6 +96,7 @@ function oldSaveMilestones(data) {
   };
 }
 
+/** @param {SaveData} data @returns {SaveData} */
 function renameOldItems(data) {
   let text = JSON.stringify(data);
   for (const [oldName, newName] of Object.entries(OLD_ITEM_NAMES)) {
@@ -62,12 +105,13 @@ function renameOldItems(data) {
   return JSON.parse(text);
 }
 
-const Save = {
+export const Save = {
   // Set once New Shop or Open Save File has replaced the autosave and is reloading. The page's
   // pagehide/visibilitychange autosave would otherwise write the old shop back over it.
   leaving: false,
 
   // Everything needed to rebuild the shop, as plain JSON-ready data.
+  /** @returns {SaveData} */
   snapshot(game) {
     // A machine or belt mid-drag is saved where it was picked up from
     const machines = game.machines.map((m) => {
@@ -93,6 +137,7 @@ const Save = {
       zinesSold: game.zinesSold,
       firstTruck: game.firstTruck,
       milestones: { ...game.milestones },
+      sales: game.sales.map((sale) => ({ ...sale })),
       zineSales: game.zineSales.map((sale) => ({ ...sale })),
       bestZinesPerSecond: game.bestZinesPerSecond,
       beltsUnlocked: game.beltsUnlocked,
@@ -108,6 +153,9 @@ const Save = {
   },
 
   // Rebuild the shop from a snapshot. Throws if the data isn't a save this version understands.
+  // Everything is read from the save before the game changes, so a save that fails part-way
+  // leaves the game as it was.
+  /** @param {SaveData} data */
   restore(game, data) {
     if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
     data = renameOldItems(data);
@@ -128,41 +176,51 @@ const Save = {
       belts.set(tileKey(s.col, s.row), piece);
     }
 
-    game.cash = data.cash;
-    game.hand = data.hand;
-    game.time = data.time;
-    game.floor = { ...data.floor };
-    game.licenses = new Set(data.licenses);
-    game.nextBillIn = data.nextBillIn;
-    game.jamUpkeepOwed = data.jamUpkeepOwed ?? 0;
-    game.graceLeft = data.graceLeft;
-    game.peakIncome = data.peakIncome;
-    // Saves from before belts were locked had belts from the start
-    game.zinesSold = data.zinesSold ?? BELTS_UNLOCK_ZINES;
-    game.beltsUnlocked = data.beltsUnlocked ?? true;
-    game.firstTruck = data.firstTruck ?? null; // saves from before the scorecard win on their next truck
-    game.milestones = data.milestones ? { ...data.milestones } : oldSaveMilestones(data);
-    game.zineSales = (data.zineSales ?? []).map((sale) => ({ ...sale }));
-    game.bestZinesPerSecond = data.bestZinesPerSecond ?? 0;
-    game.portHighlightUntil = 0;
-    game.beltDir = data.beltDir;
-    game.ledger = {
-      ...data.ledger,
-      entries: data.ledger.entries.map((entry) => ({ ...entry, at: new Date(entry.at) })),
+    const state = {
+      cash: data.cash,
+      hand: data.hand,
+      time: data.time,
+      floor: { ...data.floor },
+      licenses: new Set(data.licenses),
+      nextBillIn: data.nextBillIn,
+      jamUpkeepOwed: data.jamUpkeepOwed ?? 0,
+      graceLeft: data.graceLeft,
+      peakIncome: data.peakIncome,
+      // Saves from before belts were locked had belts from the start
+      zinesSold: data.zinesSold ?? BELTS_UNLOCK_ZINES,
+      beltsUnlocked: data.beltsUnlocked ?? true,
+      firstTruck: data.firstTruck ?? null, // saves from before the scorecard win on their next truck
+      milestones: data.milestones ? { ...data.milestones } : oldSaveMilestones(data),
+      // Saves from before the sales window rebuild it from the ledger's sale lines
+      sales: (data.sales ?? data.ledger.entries.filter((entry) => entry.kind === "sale"))
+        .map(({ time, amount }) => ({ time, amount })),
+      zineSales: (data.zineSales ?? []).map((sale) => ({ ...sale })),
+      bestZinesPerSecond: data.bestZinesPerSecond ?? 0,
+      portHighlightUntil: 0,
+      beltDir: data.beltDir,
+      ledger: {
+        ...data.ledger,
+        entries: data.ledger.entries.map((entry) => ({ ...entry, at: new Date(entry.at) })),
+      },
+      machines,
+      belts,
     };
-    game.machines = machines;
-    game.belts = belts;
+    const { x, y, zoom } = data.camera;
 
-    Camera.x = data.camera.x;
-    Camera.y = data.camera.y;
-    Camera.zoom = data.camera.zoom;
-    Camera.fitted = true; // keep the saved view instead of fitting the floor
+    Object.assign(game, state);
+    Object.assign(Camera, { x, y, zoom, fitted: true }); // keep the saved view instead of fitting the floor
   },
 
   // Autosave ------------------------------------------------------------------------------
 
   write(game) {
-    if (game.bankrupt || this.leaving) return;
+    if (this.leaving) return;
+    // A bankrupt shop is over: its save goes, so a reload after the blue screen starts a new shop.
+    // The reload's pagehide comes here, so the save is gone before the new page reads it.
+    if (game.bankrupt) {
+      this.clear();
+      return;
+    }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(this.snapshot(game)));
     } catch {
@@ -170,20 +228,33 @@ const Save = {
     }
   },
 
-  // Load the autosave if there is one. Returns true if the shop was restored.
+  // Load the autosave if there is one. Returns "restored", "none" when there's no save, or
+  // "failed" when there is one that can't be loaded. A new shop then starts, and its autosave
+  // will replace the old save, so the old one is backed up first.
   read(game) {
-    let text = null;
+    let text;
     try {
       text = localStorage.getItem(SAVE_KEY);
     } catch {
-      return false;
+      return "none";
     }
-    if (!text) return false;
+    if (!text) return "none";
     try {
       this.restore(game, JSON.parse(text));
-      return true;
+      return "restored";
     } catch {
-      return false; // a broken or old save: start a new shop instead
+      this.backUp(text);
+      return "failed";
+    }
+  },
+
+  // Keep only the first save that fails to load. If no save loads (a bug in loading, say), each
+  // new shop fails in turn, and it mustn't replace the shop that was lost.
+  backUp(text) {
+    try {
+      if (localStorage.getItem(BACKUP_KEY) === null) localStorage.setItem(BACKUP_KEY, text);
+    } catch {
+      // Storage is full; the old save can't be kept
     }
   },
 

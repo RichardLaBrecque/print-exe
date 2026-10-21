@@ -1,8 +1,11 @@
 // What the Shop sells, grouped under headings. `build` makes a machine at (0, 0) and
 // the game finds it a spot. Items with `requires` stay locked until that license is bought.
 
+import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, STAPLER_UPGRADE_COST, TrashCan } from "./machines.js";
+import { Finisher, Palletizer, PaperRollRack, PerfectBinder, RollPress, SHEETS_PER_ROLL, SaddleStitcher, SheetFedPress, Sheeter, TruckDock } from "./production.js";
+
 // One-time purchases that unlock parts of the Shop (and the Express Belt tool).
-const LICENSES = {
+export const LICENSES = {
   rolls: {
     name: "Roll Paper Delivery",
     price: 1500,
@@ -26,7 +29,7 @@ function autoStapler() {
   return stapler;
 }
 
-const CATALOG = [
+export const CATALOG = [
   { group: "Desktop", name: "Desktop Printer", price: 100, build: () => new DesktopPrinter({ col: 0, row: 0 }) },
   { group: "Desktop", name: "Manual Stapler", price: 60, build: () => new ManualStapler({ col: 0, row: 0 }) },
   { group: "Desktop", name: "Auto Stapler", price: 60 + STAPLER_UPGRADE_COST, build: () => autoStapler() },

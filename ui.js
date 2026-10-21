@@ -1,7 +1,13 @@
 // The taskbar, Start menu and windows are plain DOM. Everything else is drawn on the canvas.
 
+import { clock, money, perSecond, signedPerSecond, zineRate } from "./format.js";
+import { CATALOG, LICENSES } from "./catalog.js";
+import { BELTS_UNLOCK_ZINES, MILESTONE_UNKNOWN } from "./game.js";
+/** @import { Tool } from "./game.js" */
+
 const HELP_HIDDEN_KEY = "print95.hideHelp";
 
+/** @type {Record<Tool, string>} */
 const TOOL_NAMES = {
   select: "Select",
   belt: "Belt",
@@ -11,23 +17,6 @@ const TOOL_NAMES = {
   erase: "Erase",
   upgrade: "Upgrade",
 };
-
-function money(n) {
-  return `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString()}`;
-}
-
-function perSecond(n) {
-  return `$${n.toFixed(1)}/s`;
-}
-
-// Like perSecond, with the minus sign before the $.
-function signedPerSecond(n) {
-  return `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(1)}/s`;
-}
-
-function zineRate(n) {
-  return n.toFixed(1);
-}
 
 // When a record was reached: game time, "–" if not yet, or "Unknown" for old saves.
 function reachedAt(time) {
@@ -54,18 +43,12 @@ const SCORE_ROWS = [
   { label: "Floor usage ratio", show: (card) => card.ratio.toFixed(2) },
 ];
 
-// Seconds as m:ss.
-function clock(seconds) {
-  const s = Math.max(0, Math.ceil(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
 // Only touch the DOM when the text actually changed.
 function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
 }
 
-const UI = {
+export const UI = {
   init({ onTool, onBuy, onFit, onNewShop, onSaveFile, onOpenFile }) {
     this.shopEl = document.getElementById("shop");
     this.helpEl = document.getElementById("help");
@@ -165,7 +148,7 @@ const UI = {
   // How to Play window. Opens on load unless "Don't show this again" was ticked before.
   // Browser storage can be blocked (private windows, previews), so every access is guarded.
   initHelp() {
-    const hideBox = document.getElementById("help-hide");
+    const hideBox = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
     const close = () => {
       this.helpEl.hidden = true;
       try {
@@ -177,7 +160,7 @@ const UI = {
     document.getElementById("help-ok").addEventListener("click", close);
     document.getElementById("help-close").addEventListener("click", close);
 
-    let hidden = false;
+    let hidden;
     try {
       hidden = localStorage.getItem(HELP_HIDDEN_KEY) === "1";
     } catch {
@@ -244,7 +227,7 @@ const UI = {
   // Start menu: Save to File, Open Save File, New Shop.
   initFileMenu({ onNewShop, onSaveFile, onOpenFile }) {
     const item = (action) => this.menuEl.querySelector(`[data-action="${action}"]`);
-    const picker = document.getElementById("open-file");
+    const picker = /** @type {HTMLInputElement} */ (document.getElementById("open-file"));
 
     item("save-file").addEventListener("click", () => {
       this.setMenuOpen(false);
@@ -277,6 +260,15 @@ const UI = {
   welcomeBack() {
     this.helpEl.hidden = true;
     this.showDialog("Welcome back", "Your shop was saved in this browser and picked up where you left off.");
+  },
+
+  // After an autosave that couldn't be loaded: skip the Readme and say a new shop has started.
+  saveFailed() {
+    this.helpEl.hidden = true;
+    this.showDialog(
+      "Can't open your shop",
+      "Your saved shop couldn't be opened, so a new shop has started. The old save was kept as a backup in this browser.",
+    );
   },
 
   setMenuOpen(open) {
@@ -406,6 +398,15 @@ const UI = {
     window.addEventListener("keydown", restart);
   },
 
+  // Message box for an error that stopped the game.
+  showCrash(error) {
+    this.showDialog(
+      "Print95",
+      `PRINTSHOP.EXE has stopped because of an error: ${error?.message ?? error}. ` +
+        "To keep your shop, choose Save to File from the Start menu, then reload the page.",
+    );
+  },
+
   // Win95 message box with an OK button.
   showDialog(title, text) {
     setText(document.getElementById("dialog-title"), title);
@@ -500,14 +501,18 @@ const UI = {
       return;
     }
 
-    // Newest first
+    // Newest first. Labels can come from a save file, so they go in as text, never as HTML.
     this.listEl.replaceChildren(...ledger.entries.toReversed().map((entry) => {
+      const time = document.createElement("span");
+      time.textContent = entry.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      const amount = document.createElement("span");
+      amount.className = entry.amount < 0 ? "amount spent" : "amount";
+      amount.textContent = entry.amount >= 0 ? `+${money(entry.amount)}` : `-${money(-entry.amount)}`;
       const row = document.createElement("div");
       row.className = "row";
-      const time = entry.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
-      const amount = entry.amount >= 0 ? `+${money(entry.amount)}` : `-${money(-entry.amount)}`;
-      const spent = entry.amount < 0 ? " spent" : "";
-      row.innerHTML = `<span>${time}</span><span>${entry.label}</span><span class="amount${spent}">${amount}</span>`;
+      row.append(time, label, amount);
       return row;
     }));
   },

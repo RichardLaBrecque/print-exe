@@ -1,0 +1,22 @@
+# Type checks, lint and tests for every push to main and every pull request. GitHub Pages still
+# serves the game straight from the branch; this workflow doesn't build or deploy anything.
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm test

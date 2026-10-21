@@ -4,45 +4,18 @@
 // A belt pulls from a machine's OUT tray when it points directly away from it,
 // and pushes into a machine's IN tray when it points directly at it.
 
-const BELT_SPEED = 1; // squares per second
-const EXPRESS_SPEED = 2; // tier 2; splitters run at this speed too so they never bottleneck
+import { DIRS, TILE, dirBetween, tileKey } from "./grid.js";
+import { INK } from "./draw.js";
+import { drawItem } from "./items.js";
+
+export const BELT_SPEED = 1; // squares per second
+export const EXPRESS_SPEED = 2; // tier 2; splitters run at this speed too so they never bottleneck
 const EXPRESS_PRICE = 6;
 const BELT_PRICE = 2; // per square, refunded in full when erased
-const SPLITTER_PRICE = 10;
-const BRIDGE_PRICE = 8;
+export const SPLITTER_PRICE = 10;
+export const BRIDGE_PRICE = 8;
 
-// Index is the belt's dir: 0 right, 1 down, 2 left, 3 up.
-const DIRS = [
-  { x: 1, y: 0 },
-  { x: 0, y: 1 },
-  { x: -1, y: 0 },
-  { x: 0, y: -1 },
-];
-
-function tileKey(col, row) {
-  return `${col},${row}`;
-}
-
-function dirBetween(from, to) {
-  return DIRS.findIndex((d) => d.x === to.col - from.col && d.y === to.row - from.row);
-}
-
-// Squares from `from` to `to`, one orthogonal step at a time (`from` not included).
-// Lets a fast drag that skips squares still lay an unbroken line.
-function stepTiles(from, to) {
-  const steps = [];
-  let { col, row } = from;
-  while (col !== to.col || row !== to.row) {
-    const dx = to.col - col;
-    const dy = to.row - row;
-    if (Math.abs(dx) >= Math.abs(dy)) col += Math.sign(dx);
-    else row += Math.sign(dy);
-    steps.push({ col, row });
-  }
-  return steps;
-}
-
-class Belt {
+export class Belt {
   constructor(col, row, dir) {
     this.col = col;
     this.row = row;
@@ -196,7 +169,7 @@ class Belt {
 // Several belts can share one target: three belts feeding one IN tray, three pulling
 // from one OUT tray, or two belts merging onto one belt. Each target serves its belts
 // in turn, starting after the one it served last, so they all get an even share.
-function moveItems(game) {
+export function moveItems(game) {
   const queues = new Map(); // target (Tray or Belt) -> [{ key, serve }]
   const enqueue = (target, belt, serve) => {
     if (!queues.has(target)) queues.set(target, []);
@@ -257,7 +230,7 @@ function takeTurns(target, waiting) {
 
 // Takes items in from behind and sends them out its left and right sides, alternating
 // 50/50. If one side is blocked or has nothing attached, everything goes to the other.
-class Splitter extends Belt {
+export class Splitter extends Belt {
   constructor(col, row, dir) {
     super(col, row, dir);
     this.nextSide = 0; // 0 left, 1 right: the side that gets the next item
@@ -354,7 +327,7 @@ class Splitter extends Belt {
 
 // Tier 2 belt: twice as fast, so it keeps up with a Sheeter. Painting one over a
 // plain belt upgrades it in place.
-class ExpressBelt extends Belt {
+export class ExpressBelt extends Belt {
   get title() { return "Express Belt"; }
   get description() { return "Moves two items a square per second, fast enough for a Sheeter."; }
   get price() { return EXPRESS_PRICE; }
@@ -416,7 +389,7 @@ class BridgeLane extends Belt {
 
 // Lets two belt lines cross on one square. Items from the left or right ride across the
 // top deck; items from above or below pass underneath. Each lane carries straight through.
-class Bridge {
+export class Bridge {
   constructor(col, row) {
     this.col = col;
     this.row = row;

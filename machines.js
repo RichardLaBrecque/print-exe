@@ -4,47 +4,11 @@
 // Footprint layout, one tile column each:  [ IN ] [ body ... ] [ OUT ]
 // A machine without an in or out tray just skips that column.
 
-const TILE = 64;
-
-// Every item in the game, by display name. Also what the player's hand can hold.
-const HAND = {
-  EMPTY: null,
-  // The four states of paper: blank or printed, sheet or roll. Printed paper also carries
-  // the job it was printed for (see JOBS). Saddle-stitch sheets come from either a desktop
-  // printer or a sheeter, so tier 1 and tier 2 machines can feed each other.
-  BLANK_SHEET: "Blank Sheet",
-  BLANK_ROLL: "Blank Roll",
-  SADDLE_SHEET: "Printed Sheet: Saddle-Stitch",
-  COVER_SHEET: "Printed Sheet: Cover",
-  GUTS_SHEET: "Printed Sheet: Guts",
-  SADDLE_ROLL: "Printed Roll: Saddle-Stitch",
-  COVER_ROLL: "Printed Roll: Cover",
-  GUTS_ROLL: "Printed Roll: Guts",
-  // Finished goods
-  ZINE: "Zine",
-  PERFECT_ZINE: "Perfect-Bound Zine",
-  SADDLE_PALLET: "Pallet: Saddle-Stitched",
-  PERFECT_PALLET: "Pallet: Perfect-Bound",
-};
-
-// Press job settings: Saddle-Stitch, Cover or Guts, in the order a tap cycles them.
-const JOBS = [
-  { name: "Saddle-Stitch", label: "SADDLE", roll: HAND.SADDLE_ROLL, sheet: HAND.SADDLE_SHEET, color: "#9b8cff" },
-  { name: "Cover", label: "COVER", roll: HAND.COVER_ROLL, sheet: HAND.COVER_SHEET, color: "#e5703a" },
-  { name: "Guts", label: "GUTS", roll: HAND.GUTS_ROLL, sheet: HAND.GUTS_SHEET, color: "#4caf50" },
-];
-const PRINTED_ROLLS = JOBS.map((job) => job.roll);
-const PRINTED_SHEETS = JOBS.map((job) => job.sheet);
-
-// The job a printed sheet or roll belongs to, or undefined for anything else.
-function jobOf(item) {
-  return JOBS.find((job) => job.roll === item || job.sheet === item);
-}
-
-// Rolls are too heavy to carry; only belts move them.
-function canCarry(item) {
-  return item !== HAND.BLANK_ROLL && !PRINTED_ROLLS.includes(item);
-}
+import { DIRS, TILE } from "./grid.js";
+import { clock, money } from "./format.js";
+import { Draw, INK, drawAnts } from "./draw.js";
+import { HAND, canCarry, drawItem } from "./items.js";
+import { BELT_SPEED } from "./belts.js";
 
 // Production ratios, built around a belt carrying 1 item a second:
 //   2 printers (4 s each) feed 1 Auto Stapler (2 s each),
@@ -52,15 +16,14 @@ function canCarry(item) {
 // The Auto Stapler is still slower than a person tapping quickly.
 const PRINT_SECONDS = 4;
 const AUTO_STAPLE_SECONDS = 2;
-const STAPLER_UPGRADE_COST = 120;
+export const STAPLER_UPGRADE_COST = 120;
 const AUTO_STAPLER_UPKEEP = 6; // $ per minute, up from the Manual Stapler's 2
 // An Outbox ships 2 Zines a second: enough for an Express Belt, or two full belts once upgraded.
 const SHIP_SECONDS = 0.5;
 // The Outbox upgrade adds a second IN port, for less than a second Outbox.
 const OUTBOX_UPGRADE_COST = 50;
 const TRAY_SIZE = 5;
-const ZINE_PRICE = 10;
-const INK = "#4a4f5c";
+export const ZINE_PRICE = 10;
 // Jams: a `jams` machine (tier 2) whose OUT tray stays full pays more upkeep. A tray that is
 // full for under JAM_GRACE_SECONDS doesn't count, so a balanced line that fills for a moment
 // never shows a jam. After that, each step spent full adds 1x, with no limit, so a jam nobody
@@ -72,7 +35,8 @@ const JAM_MIN_STEP_SECONDS = 30;
 
 // Holds a count of one kind of item. Give it `item` for a fixed kind, `kinds` to take any
 // of several (it then holds one kind at a time, like a job changeover), or neither to take anything.
-class Tray {
+export class Tray {
+  /** @param {{ item?: Item | null, kinds?: Item[] | null, capacity?: number, endless?: boolean, pullable?: boolean }} options */
   constructor({ item = null, kinds = null, capacity = TRAY_SIZE, endless = false, pullable = true }) {
     this.item = item; // the kind held now; null when it takes anything or a multi-kind tray is empty
     this.kinds = kinds;
@@ -134,7 +98,35 @@ class Tray {
   }
 }
 
-class Machine {
+/** @import { Item } from "./items.js" */
+/** @typedef {"out" | "body" | `in:${number}`} Part a tappable part of a machine (see Machine#parts) */
+/** @typedef {"in" | "out"} PortKind */
+/** @typedef {{ kind: PortKind, row: number, dir: number }} Port row offset in its tray column, facing DIRS[dir] */
+
+/**
+ * What a subclass passes to Machine. Every machine needs col, row, cols, rows and accent, but
+ * subclasses pass some of them through spreads (`...at`, `...rest`) the type checker can't
+ * follow, so they're all optional here.
+ * @typedef {object} MachineOptions
+ * @property {number} [col]
+ * @property {number} [row]
+ * @property {number} [cols]
+ * @property {number} [rows]
+ * @property {string} [accent]
+ * @property {number} [upkeep]
+ * @property {string} [description]
+ * @property {string} [beltNote]
+ * @property {Tray | null} [inTray]
+ * @property {{ label: string, tray: Tray }[] | null} [inputs]
+ * @property {Tray | null} [outTray]
+ * @property {boolean} [portIn]
+ * @property {boolean} [portOut]
+ * @property {number} [portRate]
+ * @property {boolean} [wallOnly]
+ * @property {boolean} [jams]
+ */
+
+export class Machine {
   // Give `inTray` for one input, or `inputs: [{ label, tray }]` for several. Inputs stack
   // down the first column, one share of the rows each, so a belt feeds whichever it points at.
   //
@@ -149,6 +141,10 @@ class Machine {
   // goods out of the building, so they must touch the top or left wall. The floor only grows right and down, so those walls never move.
   //
   // `jams` machines pay more upkeep while their OUT tray stays full (see JAM_CYCLES_PER_STEP).
+  /**
+   * @param {string} title
+   * @param {MachineOptions} options
+   */
   constructor(title, {
     col, row, cols, rows, accent, upkeep = 0, description = "", beltNote = "",
     inTray = null, inputs = null, outTray = null, portIn = false, portOut = false, portRate = BELT_SPEED,
@@ -166,7 +162,7 @@ class Machine {
     this.wallOnly = wallOnly;
     this.inputs = inputs ?? (inTray ? [{ label: "IN", tray: inTray }] : []);
     this.outTray = outTray;
-    // { kind: "in" | "out", row, dir }: row offset in that tray column, facing DIRS[dir]
+    /** @type {Port[]} */
     this.ports = [
       ...(portIn ? this.inputs.map((_input, i) => ({ kind: "in", ...this.inputEdges(i)[0] })) : []),
       ...(portOut ? [{ kind: "out", ...this.portEdges("out")[0] }] : []),
@@ -176,6 +172,7 @@ class Machine {
     this.portTimer = 0; // 0..1; the OUT port pushes an item each time it reaches 1
     this.jams = jams;
     this.jamSeconds = 0; // how long the OUT tray has been full without a break, grace included
+    this.seconds = undefined; // how long one job takes, set by machines with timed jobs (see cycleSeconds)
     this.shake = 0;
   }
 
@@ -190,10 +187,12 @@ class Machine {
   }
 
   // Tappable parts: "in:0", "in:1", ... for each input, then "out" and "body".
+  /** @returns {Part[]} */
   get parts() {
-    return [...this.inputs.map((_input, i) => `in:${i}`), "out", "body"];
+    return [...this.inputs.map((_input, i) => /** @type {const} */ (`in:${i}`)), "out", "body"];
   }
 
+  /** @param {Part | null} part */
   trayFor(part) {
     if (part === "out") return this.outTray;
     if (part?.startsWith("in:")) return this.inputs[Number(part.slice(3))].tray;
@@ -201,6 +200,7 @@ class Machine {
   }
 
   // World-space rect for a part, or null if the machine doesn't have it.
+  /** @param {Part} part */
   partRect(part) {
     const { x, y, w, h } = this.rect;
     const inW = this.inputs.length > 0 ? TILE : 0;
@@ -218,6 +218,7 @@ class Machine {
     return { x: x + inW, y, w: w - inW - outW, h };
   }
 
+  /** @returns {Part | null} */
   partAt(wx, wy) {
     for (const part of this.parts) {
       const r = this.partRect(part);
@@ -233,6 +234,7 @@ class Machine {
 
   // Tap handling, one trio per part ------------------------------------------
 
+  /** @param {Part | null} part */
   canUse(game, part) {
     if (part?.startsWith("in:")) return this.trayFor(part).accepts(game.hand);
     if (part === "out") return game.hand === HAND.EMPTY && this.outTray.hasItem() && canCarry(this.outTray.item);
@@ -240,6 +242,7 @@ class Machine {
     return false;
   }
 
+  /** @param {Part} part */
   use(game, part) {
     if (part.startsWith("in:")) {
       this.trayFor(part).put(game.hand);
@@ -251,6 +254,7 @@ class Machine {
     }
   }
 
+  /** @param {Part | null} part */
   hint(game, part) {
     if (part?.startsWith("in:")) {
       const tray = this.trayFor(part);
@@ -372,6 +376,7 @@ class Machine {
 
   // Every outward edge of the IN (first) or OUT (last) column, in the order a tap turns
   // through them: the outer side of each tile, plus the top and bottom ends.
+  /** @param {PortKind} kind */
   portEdges(kind) {
     const side = kind === "in" ? 2 : 0; // left for IN, right for OUT
     const edges = [];
@@ -395,24 +400,29 @@ class Machine {
   }
 
   // The edges a port can turn through: an IN port stays beside its own input.
+  /** @param {Port} port */
   edgesFor(port) {
     return port.kind === "in" ? this.inputEdges(this.inputAtRow(port.row)) : this.portEdges("out");
   }
 
   // The first IN or OUT port; most machines have at most one of each.
+  /** @returns {Port | null} */
   get inPort() {
     return this.ports.find((port) => port.kind === "in") ?? null;
   }
 
+  /** @returns {Port | null} */
   get outPort() {
     return this.ports.find((port) => port.kind === "out") ?? null;
   }
 
   // A port's own square on the machine, and the square outside it that it faces.
+  /** @param {Port} port */
   portTile(port) {
     return { col: this.col + (port.kind === "in" ? 0 : this.cols - 1), row: this.row + port.row };
   }
 
+  /** @param {Port} port */
   portOutside(port) {
     const tile = this.portTile(port);
     const d = DIRS[port.dir];
@@ -420,12 +430,14 @@ class Machine {
   }
 
   // Edges of a column no other port of that kind is using.
+  /** @param {PortKind} kind @param {Port | null} [except] */
   freeEdges(kind, except = null) {
     const taken = this.ports.filter((p) => p.kind === kind && p !== except);
     return this.portEdges(kind).filter((e) => !taken.some((p) => p.row === e.row && p.dir === e.dir));
   }
 
   // Add a port on the first free edge, preferring a tile without one (e.g. the Outbox upgrade).
+  /** @param {PortKind} kind */
   addPort(kind) {
     const free = this.freeEdges(kind);
     const edge = free.find((e) => !this.ports.some((p) => p.kind === kind && p.row === e.row)) ?? free[0];
@@ -433,6 +445,7 @@ class Machine {
   }
 
   // Move the port to the next edge of its column, skipping edges another port is on.
+  /** @param {Port} port */
   rotatePort(port) {
     const edges = this.edgesFor(port);
     const free = this.freeEdges(port.kind, port);
@@ -692,101 +705,13 @@ class Machine {
   drawIcon(_ctx, _x, _y, _s) {}
 }
 
-function drawAnts(ctx, r, color, time) {
-  ctx.setLineDash([10, 6]);
-  ctx.lineDashOffset = -time * 30;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = color;
-  ctx.beginPath();
-  ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 10);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-// Item icons, drawn into an s-by-s box at (x, y).
-function drawItem(ctx, item, x, y, s) {
-  ctx.strokeStyle = INK;
-  if (item === HAND.BLANK_SHEET) {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + s * 0.15, y, s * 0.7, s);
-    ctx.strokeRect(x + s * 0.15, y, s * 0.7, s);
-  } else if (PRINTED_SHEETS.includes(item)) {
-    // Two sheets with print bars in the job's color; a cover's front is solid color
-    const job = jobOf(item);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + s * 0.25, y, s * 0.65, s * 0.9);
-    ctx.strokeRect(x + s * 0.25, y, s * 0.65, s * 0.9);
-    ctx.fillStyle = item === HAND.COVER_SHEET ? job.color : "#ffffff";
-    ctx.fillRect(x + s * 0.1, y + s * 0.1, s * 0.65, s * 0.9);
-    ctx.strokeRect(x + s * 0.1, y + s * 0.1, s * 0.65, s * 0.9);
-    ctx.fillStyle = item === HAND.COVER_SHEET ? "#ffffff" : job.color;
-    for (const f of [0.3, 0.45, 0.6, 0.75]) ctx.fillRect(x + s * 0.2, y + s * f, s * 0.45, s * 0.06);
-  } else if (item === HAND.ZINE) {
-    ctx.fillStyle = "#ffe08a";
-    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.8, s * 0.9);
-    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.8, s * 0.9);
-    ctx.fillStyle = INK;
-    ctx.fillRect(x + s * 0.48, y + s * 0.05, s * 0.04, s * 0.9); // spine
-    ctx.fillStyle = "#d93030";
-    ctx.fillRect(x + s * 0.44, y + s * 0.25, s * 0.12, s * 0.06); // staples
-    ctx.fillRect(x + s * 0.44, y + s * 0.7, s * 0.12, s * 0.06);
-  } else if (item === HAND.BLANK_ROLL || PRINTED_ROLLS.includes(item)) {
-    // Roll seen end-on: paper, a band in the job's color if printed, and the core
-    const cx = x + s / 2;
-    const cy = y + s / 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, s * 0.46, 0, Math.PI * 2);
-    ctx.fillStyle = "#fbf7ec";
-    ctx.fill();
-    ctx.stroke();
-    if (item !== HAND.BLANK_ROLL) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, s * 0.34, 0, Math.PI * 2);
-      ctx.lineWidth = s * 0.12;
-      ctx.strokeStyle = jobOf(item).color;
-      ctx.stroke();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = INK;
-    }
-    ctx.beginPath();
-    ctx.arc(cx, cy, s * 0.14, 0, Math.PI * 2);
-    ctx.fillStyle = "#c08850";
-    ctx.fill();
-    ctx.stroke();
-  } else if (item === HAND.PERFECT_ZINE) {
-    // Thick block of pages wrapped in an orange cover with a square, glued spine
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + s * 0.24, y + s * 0.12, s * 0.66, s * 0.8);
-    ctx.strokeRect(x + s * 0.24, y + s * 0.12, s * 0.66, s * 0.8);
-    ctx.fillStyle = "#e5703a";
-    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.72, s * 0.8);
-    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.72, s * 0.8);
-    ctx.fillStyle = "#b34f20";
-    ctx.fillRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8); // spine
-    ctx.strokeRect(x + s * 0.1, y + s * 0.05, s * 0.16, s * 0.8);
-  } else if (item === HAND.SADDLE_PALLET || item === HAND.PERFECT_PALLET) {
-    // Wrapped stack of boxes on a wooden pallet, boxes tinted by the kind of zine
-    ctx.fillStyle = "#c08850";
-    ctx.fillRect(x, y + s * 0.8, s, s * 0.14);
-    ctx.strokeRect(x, y + s * 0.8, s, s * 0.14);
-    ctx.fillStyle = item === HAND.PERFECT_PALLET ? "#e5a06a" : "#9fb4e0";
-    ctx.fillRect(x + s * 0.06, y + s * 0.1, s * 0.88, s * 0.7);
-    ctx.strokeRect(x + s * 0.06, y + s * 0.1, s * 0.88, s * 0.7);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.45)"; // stretch wrap
-    ctx.fillRect(x + s * 0.06, y + s * 0.25, s * 0.88, s * 0.12);
-    ctx.fillRect(x + s * 0.06, y + s * 0.55, s * 0.88, s * 0.12);
-    ctx.fillStyle = INK;
-    ctx.fillRect(x + s * 0.49, y + s * 0.1, s * 0.02, s * 0.7);
-  }
-}
-
 // Holds a stock of paper that you pay to restock. Tap the body to order a delivery;
 // a truck drops it off after a short wait. The IN and OUT trays are the same stock,
 // so you can put paper back. One upgrade adds auto-reorder.
 //
 // With `chute: true` the OUT tray is a single port (see Machine): belts can't pull from it,
 // and it pushes one item a second onto the square its triangle faces.
-class Supply extends Machine {
+export class Supply extends Machine {
   constructor(title, { item, capacity, startStock, delivery, reorderCost, sample = 0, rows = 2, chute = false, ...rest }) {
     const stock = new Tray({ item, capacity });
     stock.count = startStock;
@@ -848,7 +773,7 @@ class Supply extends Machine {
     this.pending = this.delivery.seconds;
   }
 
-  bodyHint(game) {
+  bodyHint(_game) {
     if (this.pending > 0) return "Delivery on the way.";
     if (!this.hasRoomForDelivery()) return `No room for ${this.delivery.amount} more. Use some first.`;
     return `Need ${money(this.delivery.price)} for a delivery.`;
@@ -894,7 +819,7 @@ class Supply extends Machine {
 }
 
 // Tier 1 paper: Blank Sheets, delivered by the ream.
-class PaperSupply extends Supply {
+export class PaperSupply extends Supply {
   constructor(at) {
     super("Paper Supply", {
       description: "Holds Blank Sheets. Take one from its tray, or tap the middle to order 20 more for $40.",
@@ -915,11 +840,27 @@ class PaperSupply extends Supply {
   }
 }
 
+/**
+ * What a subclass passes to Converter, on top of the MachineOptions it passes on. Optional for
+ * the same reason.
+ * @typedef {object} ConverterOptions
+ * @property {Item | Item[]} [input]
+ * @property {Item | Item[]} [output]
+ * @property {number} [seconds]
+ * @property {number} [yields]
+ * @property {number} [capacity]
+ * @property {number} [outCapacity]
+ */
+
 // Turns one IN item into one OUT item every `seconds`, on its own, while there's
 // something in and room out. Printers, presses, sheeters and binders are all this.
 // `yields` items come out per item in, e.g. a Sheeter cuts 1 roll into 10 sheets.
 // `input` and `output` are one item, or a list for machines that handle several job types.
-class Converter extends Machine {
+export class Converter extends Machine {
+  /**
+   * @param {string} title
+   * @param {ConverterOptions & MachineOptions} options
+   */
   constructor(title, { input, output, seconds, yields = 1, capacity = TRAY_SIZE, outCapacity = capacity, ...rest }) {
     super(title, {
       ...rest,
@@ -1003,7 +944,7 @@ class Converter extends Machine {
   }
 }
 
-class DesktopPrinter extends Converter {
+export class DesktopPrinter extends Converter {
   constructor(at) {
     super("Desktop Printer", {
       description: `Prints Blank Sheets into saddle-stitch Printed Sheets, one every ${PRINT_SECONDS} seconds.`,
@@ -1040,7 +981,7 @@ class DesktopPrinter extends Converter {
 }
 
 // Manual: tap the body to staple one set of pages into a Zine.
-class ManualStapler extends Machine {
+export class ManualStapler extends Machine {
   constructor(at) {
     super("Manual Stapler", {
       description: "Tap the middle to staple a saddle-stitch Printed Sheet into a Zine.",
@@ -1137,7 +1078,7 @@ class ManualStapler extends Machine {
 }
 
 // Sells Zines dropped in its IN tray, one at a time.
-class Outbox extends Machine {
+export class Outbox extends Machine {
   constructor(at) {
     super("Outbox", {
       description: `Sells Zines for $${ZINE_PRICE} each, up to two a second.`,
@@ -1226,7 +1167,7 @@ class Outbox extends Machine {
 }
 
 // Takes anything you're holding.
-class TrashCan extends Machine {
+export class TrashCan extends Machine {
   constructor(at) {
     super("Trash Can", {
       description: "Throws away anything you drop in it.",
