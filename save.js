@@ -109,6 +109,8 @@ const Save = {
   },
 
   // Rebuild the shop from a snapshot. Throws if the data isn't a save this version understands.
+  // Everything is read from the save before the game changes, so a save that fails part-way
+  // leaves the game as it was.
   restore(game, data) {
     if (data?.version !== SAVE_VERSION) throw new Error("Not a Print95 save, or from another version.");
     data = renameOldItems(data);
@@ -129,35 +131,36 @@ const Save = {
       belts.set(tileKey(s.col, s.row), piece);
     }
 
-    game.cash = data.cash;
-    game.hand = data.hand;
-    game.time = data.time;
-    game.floor = { ...data.floor };
-    game.licenses = new Set(data.licenses);
-    game.nextBillIn = data.nextBillIn;
-    game.jamUpkeepOwed = data.jamUpkeepOwed ?? 0;
-    game.graceLeft = data.graceLeft;
-    game.peakIncome = data.peakIncome;
-    // Saves from before belts were locked had belts from the start
-    game.zinesSold = data.zinesSold ?? BELTS_UNLOCK_ZINES;
-    game.beltsUnlocked = data.beltsUnlocked ?? true;
-    game.firstTruck = data.firstTruck ?? null; // saves from before the scorecard win on their next truck
-    game.milestones = data.milestones ? { ...data.milestones } : oldSaveMilestones(data);
-    game.zineSales = (data.zineSales ?? []).map((sale) => ({ ...sale }));
-    game.bestZinesPerSecond = data.bestZinesPerSecond ?? 0;
-    game.portHighlightUntil = 0;
-    game.beltDir = data.beltDir;
-    game.ledger = {
-      ...data.ledger,
-      entries: data.ledger.entries.map((entry) => ({ ...entry, at: new Date(entry.at) })),
+    const state = {
+      cash: data.cash,
+      hand: data.hand,
+      time: data.time,
+      floor: { ...data.floor },
+      licenses: new Set(data.licenses),
+      nextBillIn: data.nextBillIn,
+      jamUpkeepOwed: data.jamUpkeepOwed ?? 0,
+      graceLeft: data.graceLeft,
+      peakIncome: data.peakIncome,
+      // Saves from before belts were locked had belts from the start
+      zinesSold: data.zinesSold ?? BELTS_UNLOCK_ZINES,
+      beltsUnlocked: data.beltsUnlocked ?? true,
+      firstTruck: data.firstTruck ?? null, // saves from before the scorecard win on their next truck
+      milestones: data.milestones ? { ...data.milestones } : oldSaveMilestones(data),
+      zineSales: (data.zineSales ?? []).map((sale) => ({ ...sale })),
+      bestZinesPerSecond: data.bestZinesPerSecond ?? 0,
+      portHighlightUntil: 0,
+      beltDir: data.beltDir,
+      ledger: {
+        ...data.ledger,
+        entries: data.ledger.entries.map((entry) => ({ ...entry, at: new Date(entry.at) })),
+      },
+      machines,
+      belts,
     };
-    game.machines = machines;
-    game.belts = belts;
+    const { x, y, zoom } = data.camera;
 
-    Camera.x = data.camera.x;
-    Camera.y = data.camera.y;
-    Camera.zoom = data.camera.zoom;
-    Camera.fitted = true; // keep the saved view instead of fitting the floor
+    Object.assign(game, state);
+    Object.assign(Camera, { x, y, zoom, fitted: true }); // keep the saved view instead of fitting the floor
   },
 
   // Autosave ------------------------------------------------------------------------------
