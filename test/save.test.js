@@ -62,7 +62,7 @@ describe("Save#restore", () => {
 
     Save.restore(Game, data);
 
-    assert.equal(Game.zinesSold, 20);
+    assert.equal(Game.zinesSold, 10);
     assert.equal(Game.beltsUnlocked, true);
     assert.deepEqual(Game.milestones, { production: null, profit10k: -1, profit100k: null });
     assert.deepEqual(Game.sales, [{ time: 0, amount: 30 }]);

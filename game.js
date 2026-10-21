@@ -21,7 +21,7 @@ const FIRST_BILL_SECONDS = 120; // a little longer to get the first loop going
 const GRACE_SECONDS = 60;
 
 // Belts start locked: sell this many Zines by hand first.
-export const BELTS_UNLOCK_ZINES = 20;
+export const BELTS_UNLOCK_ZINES = 10;
 const PORT_HIGHLIGHT_SECONDS = 15; // how long ports pulse after belts unlock
 /** @typedef {"select" | "belt" | "express" | "splitter" | "bridge" | "erase" | "upgrade"} Tool */
 /** @type {Tool[]} */
