@@ -279,6 +279,15 @@ const UI = {
     this.showDialog("Welcome back", "Your shop was saved in this browser and picked up where you left off.");
   },
 
+  // After an autosave that couldn't be loaded: skip the Readme and say a new shop has started.
+  saveFailed() {
+    this.helpEl.hidden = true;
+    this.showDialog(
+      "Can't open your shop",
+      "Your saved shop couldn't be opened, so a new shop has started. The old save was kept as a backup in this browser.",
+    );
+  },
+
   setMenuOpen(open) {
     this.menuEl.hidden = !open;
     this.startEl.classList.toggle("pressed", open);

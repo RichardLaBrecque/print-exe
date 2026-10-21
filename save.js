@@ -6,6 +6,7 @@
 // access is wrapped: the game still runs, it just won't remember.
 
 const SAVE_KEY = "print95.save";
+const BACKUP_KEY = "print95.save.backup"; // a save that failed to load, kept before the autosave replaces it
 const SAVE_VERSION = 1;
 const AUTOSAVE_SECONDS = 10;
 
@@ -170,20 +171,33 @@ const Save = {
     }
   },
 
-  // Load the autosave if there is one. Returns true if the shop was restored.
+  // Load the autosave if there is one. Returns "restored", "none" when there's no save, or
+  // "failed" when there is one that can't be loaded. A new shop then starts, and its autosave
+  // will replace the old save, so the old one is backed up first.
   read(game) {
     let text = null;
     try {
       text = localStorage.getItem(SAVE_KEY);
     } catch {
-      return false;
+      return "none";
     }
-    if (!text) return false;
+    if (!text) return "none";
     try {
       this.restore(game, JSON.parse(text));
-      return true;
+      return "restored";
     } catch {
-      return false; // a broken or old save: start a new shop instead
+      this.backUp(text);
+      return "failed";
+    }
+  },
+
+  // Keep only the first save that fails to load. If no save loads (a bug in loading, say), each
+  // new shop fails in turn, and it mustn't replace the shop that was lost.
+  backUp(text) {
+    try {
+      if (localStorage.getItem(BACKUP_KEY) === null) localStorage.setItem(BACKUP_KEY, text);
+    } catch {
+      // Storage is full; the old save can't be kept
     }
   },
 

@@ -1495,7 +1495,7 @@ function frame(now) {
 }
 
 // Pick up the autosaved shop, if there is one, before the first frame.
-const restored = Save.read(Game);
+const saved = Save.read(Game);
 for (const machine of Game.machines) Game.turnPortsInward(machine);
 
 UI.init({
@@ -1506,7 +1506,8 @@ UI.init({
   onSaveFile: () => Save.download(Game),
   onOpenFile: (file) => Save.open(file, Game),
 });
-if (restored) UI.welcomeBack();
+if (saved === "restored") UI.welcomeBack();
+if (saved === "failed") UI.saveFailed();
 layout();
 Save.startAutosave(Game);
 requestAnimationFrame(frame);
