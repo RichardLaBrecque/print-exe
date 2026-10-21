@@ -21,9 +21,9 @@
 // triangles push at Express Belt speed, since the Sheeter, Saddle Stitcher and Finisher make
 // 2 items a second; the binders get one IN triangle each for COVER and GUTS.
 //
-// Jams: every machine here with an OUT tray pays more upkeep while that tray stays full. After
-// 10 seconds full it's jammed, then upkeep goes up 1x every 30 seconds with no limit (see
-// JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
+// Jams: every machine here with an OUT tray pays more upkeep while that tray has no room for its
+// next job. After 10 seconds blocked it's jammed, then upkeep goes up 1x every 30 seconds with
+// no limit (see JAM_GRACE_SECONDS), so a backed-up line nobody notices gets expensive.
 
 import { money } from "./format.js";
 import { Draw, INK } from "./draw.js";

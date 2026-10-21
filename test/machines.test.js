@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DesktopPrinter, ManualStapler, Outbox } from "../machines.js";
-import { RollPress } from "../production.js";
+import { RollPress, Sheeter } from "../production.js";
 import { HAND } from "../items.js";
 
 describe("DesktopPrinter#update", () => {
@@ -103,6 +103,18 @@ describe("Machine#upkeepMultiplier", () => {
 
     assert.equal(press.isJammed(), false);
     assert.equal(press.upkeepMultiplier(), 1);
+  });
+
+  it("jams a Sheeter whose OUT tray has some room but not enough for the next 10 sheets", () => {
+    const game = fakeGame();
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+    for (let i = 0; i < 18; i++) sheeter.outTray.put(HAND.BLANK_SHEET);
+    sheeter.inTray.put(HAND.BLANK_ROLL);
+
+    run(sheeter, 10.25, game);
+
+    assert.equal(sheeter.working, false);
+    assert.equal(sheeter.isJammed(), true);
   });
 });
 
