@@ -43,6 +43,7 @@ Plain JavaScript modules. `index.html` starts `main.js`, and each file imports w
 | `machines.js` | Trays, the base `Machine` class and desktop machines |
 | `production.js` | Tier-2 machines: presses, sheeter, binders, palletizer, truck dock |
 | `catalog.js` | What the Shop sells, and the licenses |
+| `challenges.js` | The challenges: shops that start with extra rules |
 | `game.js` | Game state, money and the camera |
 | `save.js` | The autosave and save files |
 | `ui.js` | Taskbar, Start menu and Win95 windows |

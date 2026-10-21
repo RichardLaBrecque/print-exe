@@ -62,7 +62,7 @@ describe("Save#restore", () => {
 
     Save.restore(Game, data);
 
-    assert.equal(Game.zinesSold, 20);
+    assert.equal(Game.zinesSold, 10);
     assert.equal(Game.beltsUnlocked, true);
     assert.deepEqual(Game.milestones, { production: null, profit10k: -1, profit100k: null });
     assert.deepEqual(Game.sales, [{ time: 0, amount: 30 }]);
@@ -77,6 +77,32 @@ describe("Save#restore", () => {
     Save.restore(Game, data);
 
     assert.equal(Game.machines[0].outPort.dir, 1);
+  });
+
+  it("keeps a challenge shop's challenge", () => {
+    Game.startChallenge("narrow");
+    const saved = JSON.stringify(Save.snapshot(Game));
+
+    Save.restore(Game, JSON.parse(NEW_SHOP));
+    Save.restore(Game, JSON.parse(saved));
+
+    assert.equal(Game.challenge, "narrow");
+  });
+
+  it("loads saves from before challenges as normal shops", () => {
+    const data = JSON.parse(NEW_SHOP);
+    delete data.challenge;
+
+    Save.restore(Game, data);
+
+    assert.equal(Game.challenge, null);
+  });
+
+  it("won't load a challenge it doesn't know", () => {
+    const data = JSON.parse(NEW_SHOP);
+    data.challenge = "Nope";
+
+    assert.throws(() => Save.restore(Game, data));
   });
 
   it("changes nothing when a save fails part-way through loading", () => {

@@ -6,6 +6,7 @@ import { HAND, canCarry } from "./items.js";
 import { BRIDGE_PRICE, Belt, Bridge, ExpressBelt, SPLITTER_PRICE, Splitter, moveItems } from "./belts.js";
 import { DesktopPrinter, ManualStapler, Outbox, PaperSupply, TrashCan } from "./machines.js";
 import { LICENSES } from "./catalog.js";
+import { CHALLENGES } from "./challenges.js";
 
 const LEDGER_KEEP = 200; // recent ledger entries kept for the Ledger's list
 const INCOME_SECONDS = 60; // income is averaged over this window, so sales are kept this long
@@ -20,7 +21,7 @@ const FIRST_BILL_SECONDS = 120; // a little longer to get the first loop going
 const GRACE_SECONDS = 60;
 
 // Belts start locked: sell this many Zines by hand first.
-export const BELTS_UNLOCK_ZINES = 20;
+export const BELTS_UNLOCK_ZINES = 10;
 const PORT_HIGHLIGHT_SECONDS = 15; // how long ports pulse after belts unlock
 /** @typedef {"select" | "belt" | "express" | "splitter" | "bridge" | "erase" | "upgrade"} Tool */
 /** @type {Tool[]} */
@@ -59,6 +60,8 @@ export const Game = {
   beltsUnlocked: false,
   portHighlightUntil: 0, // game time until which ports pulse to show where belts connect
   floor: { cols: 8, rows: 10 },
+  /** @type {string | null} */
+  challenge: null, // key of the CHALLENGES entry this shop plays, or null for a normal shop
   machines: [
     new PaperSupply({ col: 0, row: 1 }),
     new DesktopPrinter({ col: 4, row: 1 }),
@@ -141,6 +144,18 @@ export const Game = {
 
   // Floor expansion --------------------------------------------------------------
 
+  // Start a new shop on a challenge's rules. Only for a shop that hasn't started yet.
+  startChallenge(key) {
+    const { fixedCols } = CHALLENGES[key];
+    this.challenge = key;
+    if (fixedCols) this.floor.cols = fixedCols;
+  },
+
+  // A challenge can fix the floor's width. Its right wall then gets a yard instead of a buy strip.
+  canWiden() {
+    return !this.challenge || !CHALLENGES[this.challenge].fixedCols;
+  },
+
   // The buy strips along the right and bottom edges of the floor, in world space.
   // Each costs TILE_PRICE per new square, so longer edges cost more.
   expanders() {
@@ -149,6 +164,13 @@ export const Game = {
     const fh = rows * TILE;
     const rightSquares = EXPAND_STEP * rows;
     const bottomSquares = EXPAND_STEP * cols;
+    const bottom = {
+      side: "bottom",
+      rect: { x: 0, y: fh + 8, w: fw, h: TILE - 8 },
+      label: `+${bottomSquares} squares`,
+      cost: bottomSquares * TILE_PRICE,
+    };
+    if (!this.canWiden()) return [bottom];
     return [
       {
         side: "right",
@@ -156,12 +178,7 @@ export const Game = {
         label: `+${rightSquares} squares`,
         cost: rightSquares * TILE_PRICE,
       },
-      {
-        side: "bottom",
-        rect: { x: 0, y: fh + 8, w: fw, h: TILE - 8 },
-        label: `+${bottomSquares} squares`,
-        cost: bottomSquares * TILE_PRICE,
-      },
+      bottom,
     ];
   },
 
