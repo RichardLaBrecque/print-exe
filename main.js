@@ -458,8 +458,11 @@ function drawHoverInfo() {
     ? ` Its OUT tray is full: clear it before upkeep goes up (now ${target.upkeepMultiplier()}x).`
     : "";
   const upkeep = target.upkeep ? ` Upkeep $${target.upkeep}/min.${jammed}` : "";
+  // Belts have no upgrades; a machine with none left, or none yet, has no price
+  const cost = target.upgradeCost?.(Game) ?? null;
+  const upgrade = cost === null ? "" : ` Upgrade (U) for ${money(cost)}: ${target.upgradeNote()}.`;
   const text = target.details ? target.details(Game) : target.description;
-  infoTip(ctx, target.title, `${text}${upkeep}`, hover.x, hover.y);
+  infoTip(ctx, target.title, `${text}${upkeep}${upgrade}`, hover.x, hover.y);
 }
 
 // A cursor that shows the item in your hand: a small arrow with the item on a white card beside it.

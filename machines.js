@@ -329,6 +329,7 @@ export class Machine {
   upgradeHint(_game) { return "No upgrades for this machine."; }
   upgrade() {}
   upgradedTip() { return `${this.title} upgraded.`; } // shown once the upgrade is bought
+  upgradeNote() { return ""; } // what the next upgrade does, for the hover tooltip
 
   // 0..1 to show a progress bar in the body, or null for none.
   progress() { return null; }
@@ -797,6 +798,7 @@ export class Supply extends Machine {
   upgradeHint() { return "Already reorders on its own."; }
   upgrade() { this.autoReorder = true; }
   upgradedTip() { return `${this.title} now reorders on its own whenever you can afford it.`; }
+  upgradeNote() { return "reorders on its own whenever you can afford it"; }
 
   details(game) {
     const text = super.details(game);
@@ -1050,6 +1052,7 @@ export class ManualStapler extends Machine {
   upgradeCost() { return this.level === 0 ? STAPLER_UPGRADE_COST : null; }
   upgradeHint() { return "Already an Auto Stapler."; }
   upgradedTip() { return "Manual Stapler is now an Auto Stapler!"; }
+  upgradeNote() { return `becomes an Auto Stapler, which staples on its own every ${AUTO_STAPLE_SECONDS} seconds`; }
 
   upgrade() {
     this.level = 1;
@@ -1133,6 +1136,7 @@ export class Outbox extends Machine {
   upgradeCost(game) { return this.level === 0 && game.beltsUnlocked ? OUTBOX_UPGRADE_COST : null; }
   upgradeHint() { return this.level === 0 ? "Its upgrade, a second input for belts, opens once belts unlock." : "Already has two inputs."; }
   upgradedTip() { return "Outbox now takes Zines through two IN triangles."; }
+  upgradeNote() { return "adds a second IN triangle, so two belts can feed it"; }
 
   upgrade() {
     this.applyUpgrade();

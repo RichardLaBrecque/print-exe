@@ -15,6 +15,7 @@ It works best on a desktop browser. It also works on phones.
 - **Drag** machines and belts to move them. Drag open floor to look around.
 - **Zoom** with pinch or the scroll wheel. Press **F** to see the whole floor.
 - **Build** from the **Start** menu: belts, splitters, bridges, the Shop and the Ledger.
+- **Upgrade** some machines with the Upgrade tool: the Manual Stapler becomes an Auto Stapler. A machine's description names its upgrade and price.
 - **Right-click** goes back to Select.
 
 Rent and upkeep are billed every minute. If your cash stays below $0 for a minute, the shop goes bankrupt.
