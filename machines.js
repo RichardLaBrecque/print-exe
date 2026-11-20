@@ -5,7 +5,7 @@
 // A machine without an in or out tray just skips that column.
 
 import { DIRS, TILE } from "./grid.js";
-import { clock, money } from "./format.js";
+import { clock, money, orList } from "./format.js";
 import { Draw, INK, drawAnts } from "./draw.js";
 import { HAND, canCarry, drawItem } from "./items.js";
 import { BELT_SPEED } from "./belts.js";
@@ -249,8 +249,10 @@ export class Machine {
     if (part.startsWith("in:")) {
       this.trayFor(part).put(game.hand);
       game.hand = HAND.EMPTY;
+      game.handFrom = null;
     } else if (part === "out") {
       game.hand = this.outTray.take();
+      game.handFrom = this.outTray; // so Game#putBack can return it
     } else {
       this.activate(game);
     }
@@ -258,18 +260,25 @@ export class Machine {
 
   /** @param {Part | null} part */
   hint(game, part) {
-    if (part?.startsWith("in:")) {
-      const tray = this.trayFor(part);
-      if (game.hand === HAND.EMPTY) return `Drop ${tray.item ?? "anything"} here.`;
-      if (tray.item !== null && tray.item !== game.hand) return `Only takes ${tray.item}.`;
-      return "In tray is full.";
-    }
+    if (part?.startsWith("in:")) return this.inTrayHint(game, this.trayFor(part));
     if (part === "out") {
       if (!canCarry(this.outTray.item)) return "Rolls are too heavy to carry. Move them with belts.";
       if (game.hand !== HAND.EMPTY) return "Your hands are full.";
       return "Nothing to collect yet.";
     }
     return this.bodyHint(game);
+  }
+
+  // What an IN tray takes, when a tap on it with what's in your hand did nothing. A tray that
+  // takes several kinds holds one at a time, so it can turn away a kind it otherwise takes.
+  /** @param {Tray} tray */
+  inTrayHint(game, tray) {
+    const kinds = tray.kinds ?? (tray.item === null ? [] : [tray.item]);
+    if (kinds.length > 0 && !kinds.some(canCarry)) return "Rolls are too heavy to carry. Feed this tray with a belt.";
+    if (game.hand === HAND.EMPTY) return `Drop ${kinds.length > 0 ? orList(kinds) : "anything"} here.`;
+    if (kinds.length > 0 && !kinds.includes(game.hand)) return `Only takes ${orList(kinds)}.`;
+    if (!tray.fits(game.hand)) return `Holds ${tray.item} now. It takes ${game.hand} once it's empty.`;
+    return "In tray is full.";
   }
 
   // Hover and Shop text: the description, plus the belt note once belts unlock, since ports
@@ -322,6 +331,7 @@ export class Machine {
   upgradeHint(_game) { return "No upgrades for this machine."; }
   upgrade() {}
   upgradedTip() { return `${this.title} upgraded.`; } // shown once the upgrade is bought
+  upgradeNote() { return ""; } // what the next upgrade does, for the hover tooltip
 
   // 0..1 to show a progress bar in the body, or null for none.
   progress() { return null; }
@@ -338,6 +348,13 @@ export class Machine {
   // Whether the OUT tray is stopping the next job. Machines that make several items a job override it.
   isBlocked() {
     return this.outTray.isFull();
+  }
+
+  // Whether this tray is what's stopping the machine: its OUT tray, while the next job won't fit.
+  // A supply's stock is both its IN and OUT tray, and a full stock is good, so it never counts.
+  /** @param {Tray} tray */
+  isBlockedBy(tray) {
+    return tray === this.outTray && tray !== this.inTray && this.isBlocked();
   }
 
   // How long one job takes, for counting jam cycles. A `jams` machine without `seconds` overrides it.
@@ -372,11 +389,13 @@ export class Machine {
     return step - (this.jammedFor() % step);
   }
 
-  // What the tag shows while jammed, e.g. "JAMMED: 2x IN 0:12" or "JAMMED: UPKEEP 5x, 6x IN 0:20".
+  // What the tag shows while jammed: upkeep now, if it's already up, then the next step and the
+  // time to it, e.g. "JAMMED: UPKEEP 2x IN 0:12" or "JAMMED: UPKEEP 5x, 6x IN 0:20". "UPKEEP"
+  // comes first so "IN" reads as time, not as the IN tray.
   jamLabel() {
     const multiplier = this.upkeepMultiplier();
-    const now = multiplier > 1 ? `UPKEEP ${multiplier}x, ` : "";
-    return `JAMMED: ${now}${multiplier + 1}x IN ${clock(this.nextJamStepIn())}`;
+    const now = multiplier > 1 ? `${multiplier}x, ` : "";
+    return `JAMMED: UPKEEP ${now}${multiplier + 1}x IN ${clock(this.nextJamStepIn())}`;
   }
 
   // Ports -------------------------------------------------------------------------------
@@ -581,7 +600,7 @@ export class Machine {
     if (this.outTray) this.drawTray(ctx, this.partRect("out"), this.outTray, "OUT");
 
     const body = this.partRect("body");
-    if (body) this.drawBody(ctx, body);
+    if (body) this.drawBody(ctx, body, game);
 
     ctx.restore();
 
@@ -659,11 +678,12 @@ export class Machine {
       ctx.globalAlpha = 1;
     }
 
-    // Count, red when full so you know the machine is blocked
+    // Count, red while this tray is stopping the machine, so you know it's blocked. A full IN
+    // tray or supply is doing fine, so it stays dark.
     if (!tray.endless) {
       ctx.font = Draw.font(10, true);
       ctx.textBaseline = "bottom";
-      ctx.fillStyle = tray.isFull() ? "#d93030" : INK;
+      ctx.fillStyle = this.isBlockedBy(tray) ? "#d93030" : INK;
       ctx.fillText(`${tray.count}/${tray.capacity}`, cx, sy + sh - 2);
     } else if (label === "OUT") {
       ctx.font = Draw.font(12, true);
@@ -684,7 +704,7 @@ export class Machine {
     ctx.textAlign = "left";
   }
 
-  drawBody(ctx, r) {
+  drawBody(ctx, r, _game) {
     // A one-tile-tall body only has room for its label and progress bar
     if (r.h >= TILE * 2) {
       const s = Math.min(r.w, r.h) * 0.5;
@@ -790,6 +810,7 @@ export class Supply extends Machine {
   upgradeHint() { return "Already reorders on its own."; }
   upgrade() { this.autoReorder = true; }
   upgradedTip() { return `${this.title} now reorders on its own whenever you can afford it.`; }
+  upgradeNote() { return "reorders on its own whenever you can afford it"; }
 
   details(game) {
     const text = super.details(game);
@@ -811,11 +832,18 @@ export class Supply extends Machine {
     if (this.autoReorder && this.hasRoomForDelivery() && game.cash >= this.delivery.price) this.activate(game);
   }
 
-  drawBody(ctx, r) {
-    super.drawBody(ctx, r);
-    // Order button label, so it's clear the body is tappable
-    const label = this.pending > 0 ? "ARRIVING" : this.autoReorder ? "AUTO" : `ORDER ${money(this.delivery.price)}`;
-    this.drawBodyLabel(ctx, r, label, INK);
+  // The label across the body, so it's clear what a tap on it does. When you're broke and out
+  // of stock, a tap gets free samples, and the label says so rather than showing a price.
+  orderLabel(game) {
+    if (this.pending > 0) return "ARRIVING";
+    if (this.sampleDue(game)) return "FREE SAMPLES";
+    if (this.autoReorder) return "AUTO";
+    return `ORDER ${money(this.delivery.price)}`;
+  }
+
+  drawBody(ctx, r, game) {
+    super.drawBody(ctx, r, game);
+    this.drawBodyLabel(ctx, r, this.orderLabel(game), INK);
   }
 
   // A stack of whatever this supply holds.
@@ -1043,6 +1071,7 @@ export class ManualStapler extends Machine {
   upgradeCost() { return this.level === 0 ? STAPLER_UPGRADE_COST : null; }
   upgradeHint() { return "Already an Auto Stapler."; }
   upgradedTip() { return "Manual Stapler is now an Auto Stapler!"; }
+  upgradeNote() { return `becomes an Auto Stapler, which staples on its own every ${AUTO_STAPLE_SECONDS} seconds`; }
 
   upgrade() {
     this.level = 1;
@@ -1126,6 +1155,7 @@ export class Outbox extends Machine {
   upgradeCost(game) { return this.level === 0 && game.beltsUnlocked ? OUTBOX_UPGRADE_COST : null; }
   upgradeHint() { return this.level === 0 ? "Its upgrade, a second input for belts, opens once belts unlock." : "Already has two inputs."; }
   upgradedTip() { return "Outbox now takes Zines through two IN triangles."; }
+  upgradeNote() { return "adds a second IN triangle, so two belts can feed it"; }
 
   upgrade() {
     this.applyUpgrade();

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DesktopPrinter, ManualStapler, Outbox } from "../machines.js";
+import { DesktopPrinter, ManualStapler, Outbox, PaperSupply } from "../machines.js";
 import { Palletizer, RollPress, Sheeter, TruckDock } from "../production.js";
 import { HAND } from "../items.js";
 
@@ -55,6 +55,117 @@ describe("ManualStapler#use", () => {
     const stapler = new ManualStapler({ col: 0, row: 0 });
 
     assert.equal(stapler.canUse(game, "body"), false);
+  });
+});
+
+describe("Machine#hint", () => {
+  it("names every kind an empty multi-kind IN tray takes", () => {
+    const game = fakeGame();
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+
+    assert.equal(palletizer.hint(game, "in:0"), "Drop Zine or Perfect-Bound Zine here.");
+  });
+
+  it("says what an empty multi-kind IN tray takes when you hold something else", () => {
+    const game = fakeGame();
+    game.hand = HAND.BLANK_SHEET;
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+
+    assert.equal(palletizer.hint(game, "in:0"), "Only takes Zine or Perfect-Bound Zine.");
+  });
+
+  it("says a multi-kind IN tray takes your kind once the kind it holds is gone", () => {
+    const game = fakeGame();
+    game.hand = HAND.PERFECT_ZINE;
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+    palletizer.inTray.put(HAND.ZINE);
+
+    assert.equal(palletizer.hint(game, "in:0"), "Holds Zine now. It takes Perfect-Bound Zine once it's empty.");
+  });
+
+  it("says rolls come by belt for an IN tray that only takes rolls", () => {
+    const game = fakeGame();
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+
+    assert.equal(sheeter.hint(game, "in:0"), "Rolls are too heavy to carry. Feed this tray with a belt.");
+  });
+
+  it("says a full IN tray is full", () => {
+    const game = fakeGame();
+    game.hand = HAND.BLANK_SHEET;
+    const printer = new DesktopPrinter({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) printer.inTray.put(HAND.BLANK_SHEET);
+
+    assert.equal(printer.hint(game, "in:0"), "In tray is full.");
+  });
+});
+
+describe("Machine#isBlockedBy", () => {
+  it("counts a full OUT tray as blocking a Stapler", () => {
+    const stapler = new ManualStapler({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) stapler.outTray.put(HAND.ZINE);
+
+    assert.equal(stapler.isBlockedBy(stapler.outTray), true);
+  });
+
+  it("never counts a full IN tray as blocking", () => {
+    const stapler = new ManualStapler({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) stapler.inTray.put(HAND.SADDLE_SHEET);
+
+    assert.equal(stapler.isBlockedBy(stapler.inTray), false);
+  });
+
+  it("never counts a full Paper Supply as blocking, though its stock is its OUT tray too", () => {
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 40;
+
+    assert.equal(supply.isBlockedBy(supply.outTray), false);
+  });
+
+  it("counts a Sheeter's OUT tray as blocking once the next 10 sheets won't fit", () => {
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+    for (let i = 0; i < 11; i++) sheeter.outTray.put(HAND.BLANK_SHEET);
+
+    assert.equal(sheeter.isBlockedBy(sheeter.outTray), true);
+  });
+});
+
+describe("Supply#orderLabel", () => {
+  it("offers free samples when you're broke and out of paper", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+
+    assert.equal(supply.orderLabel(game), "FREE SAMPLES");
+  });
+
+  it("shows the delivery price when you can afford one", () => {
+    const game = fakeGame();
+    game.cash = 40;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+
+    assert.equal(supply.orderLabel(game), "ORDER $40");
+  });
+
+  it("shows the delivery price while there's paper left, even when broke", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 5;
+
+    assert.equal(supply.orderLabel(game), "ORDER $40");
+  });
+
+  it("says a delivery is arriving once one is on the way", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+    supply.order(5);
+
+    assert.equal(supply.orderLabel(game), "ARRIVING");
   });
 });
 
@@ -127,6 +238,23 @@ describe("Machine#upkeepMultiplier", () => {
 
     assert.equal(palletizer.inTray.count, 10);
     assert.equal(palletizer.isJammed(), true);
+  });
+});
+
+describe("Machine#jamLabel", () => {
+  // A Roll Press job is 5 seconds, so each upkeep step is the 30-second minimum.
+  it("names upkeep and the time to the next step for a newly jammed machine", () => {
+    const press = new RollPress({ col: 0, row: 0 });
+    press.jamSeconds = 10 + 18; // 18 seconds past the grace period
+
+    assert.equal(press.jamLabel(), "JAMMED: UPKEEP 2x IN 0:12");
+  });
+
+  it("names the upkeep now and the next step once upkeep has gone up", () => {
+    const press = new RollPress({ col: 0, row: 0 });
+    press.jamSeconds = 10 + 125; // 4 steps and 5 seconds past the grace period
+
+    assert.equal(press.jamLabel(), "JAMMED: UPKEEP 5x, 6x IN 0:25");
   });
 });
 

@@ -31,6 +31,13 @@ const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
 export const MILESTONE_UNKNOWN = -1;
 const ZINE_RATE_SECONDS = 60; // Zines/s is averaged over this window, like income
 
+// Tips stay up long enough to read, TIP_CHARS_PER_SECOND of text a second, from TIP_MIN_SECONDS
+// up to TIP_MAX_SECONDS. Floating numbers rise and fade over FLOAT_SECONDS.
+const TIP_CHARS_PER_SECOND = 12;
+const TIP_MIN_SECONDS = 1.6;
+const TIP_MAX_SECONDS = 6;
+const FLOAT_SECONDS = 1;
+
 const EXPAND_STEP = 2; // rows or columns added per expansion
 const TILE_PRICE = 3; // cost of each new floor square
 
@@ -45,6 +52,10 @@ export const Game = {
   // entries: { at, time, label, amount }, amount is negative for spending
   ledger: { totalEarned: 0, totalSpent: 0, salesCount: 0, entryCount: 0, entries: [] },
   hand: HAND.EMPTY,
+  // The tray the held item was taken from, so putBack can return it; null when it came off a belt
+  // or from a save. Not saved.
+  /** @type {import("./machines.js").Tray | null} */
+  handFrom: null,
   time: 0,
   nextBillIn: FIRST_BILL_SECONDS, // seconds until rent and upkeep are billed
   jamUpkeepOwed: 0, // $ of extra upkeep from jammed machines, billed with the next rent
@@ -80,9 +91,11 @@ export const Game = {
   // Belt, splitter or bridge being dragged: { piece, from: { col, row }, valid }.
   // It's lifted out of `belts` while it moves, so it neither runs nor blocks its own old square.
   movingBelt: null,
-  // What the mouse is resting on, for the description tooltip: { target, x, y, since }
+  // What the mouse is resting on, or a finger is pressing and holding, for the description
+  // tooltip: { target, x, y, since, above }, with `above` to draw it above a finger
   hover: null,
-  floaters: [], // { text, x, y, age, kind: "tip" | "float", color }, x/y in world space
+  jamShown: null, // the jammed machine the jam alert showed last, so the next press moves on
+  floaters: [], // { text, x, y, age, life, kind: "tip" | "float", color }, x/y in world space, age and life in seconds
   width: 0,
   height: 0,
   dpr: 1,
@@ -428,16 +441,32 @@ export const Game = {
       this.showTip("Rolls are too heavy to carry. Move them with belts.", wx, wy);
     } else if (this.hand === HAND.EMPTY && belt.item !== null) {
       this.hand = belt.item;
+      this.handFrom = null;
       belt.item = null;
     } else if (this.hand !== HAND.EMPTY && belt.item === null) {
       belt.item = this.hand;
       belt.progress = 0.5;
       this.hand = HAND.EMPTY;
+      this.handFrom = null;
     } else if (belt.item !== null) {
       this.showTip("Your hands are full.", wx, wy);
     } else {
       this.showTip("Empty belt. Use the Belt tool to rotate it.", wx, wy);
     }
+  },
+
+  // Right-click or Escape with Select: put the held item back in the tray it was taken from, if
+  // there's still room. An item picked up from a belt has no tray to go back to.
+  putBack(wx, wy) {
+    if (this.hand === HAND.EMPTY) return;
+    if (this.handFrom?.accepts(this.hand)) {
+      this.handFrom.put(this.hand);
+      this.hand = HAND.EMPTY;
+      this.handFrom = null;
+      return;
+    }
+    const places = this.beltsUnlocked ? "a tray, on a belt or in the Trash Can" : "a tray or the Trash Can";
+    this.showTip(`Can't put it back. Drop it in ${places}.`, wx, wy);
   },
 
   // Machines ---------------------------------------------------------------------
@@ -536,6 +565,22 @@ export const Game = {
     const { x, y, w } = machine.rect;
     this.floatText(`-${money(cost)}`, x + w / 2, y, "#d93030");
     this.showTip(machine.upgradedTip(), x + w / 2, y);
+  },
+
+  jammedMachines() {
+    return this.machines.filter((m) => m.isJammed());
+  },
+
+  // The jam alert and J: center the view on the next jammed machine, taking each in turn, and
+  // shake it so it's easy to spot. Does nothing when no machine is jammed.
+  showNextJam() {
+    const jammed = this.jammedMachines();
+    if (jammed.length === 0) return;
+    const next = jammed[(jammed.indexOf(this.jamShown) + 1) % jammed.length];
+    this.jamShown = next;
+    const { x, y, w, h } = next.rect;
+    Camera.lookAt(x + w / 2, y + h / 2);
+    next.shake = 0.4;
   },
 
   // Moving a belt piece is free: it keeps its direction and anything it's carrying.
@@ -664,13 +709,14 @@ export const Game = {
   },
 
   floatText(text, x, y, color = "#3ddc84") {
-    this.floaters.push({ text, x, y, age: 0, kind: "float", color });
+    this.floaters.push({ text, x, y, age: 0, life: FLOAT_SECONDS, kind: "float", color });
   },
 
   showTip(text, x, y) {
     // Only one tooltip at a time
     this.floaters = this.floaters.filter((f) => f.kind !== "tip");
-    this.floaters.push({ text, x, y, age: 0, kind: "tip" });
+    const life = Math.min(TIP_MAX_SECONDS, Math.max(TIP_MIN_SECONDS, text.length / TIP_CHARS_PER_SECOND));
+    this.floaters.push({ text, x, y, age: 0, life, kind: "tip" });
   },
 
   // Running costs ------------------------------------------------------------------
@@ -695,6 +741,11 @@ export const Game = {
   // What the next bill will charge: rent and upkeep, plus jam upkeep owed so far.
   nextBillTotal() {
     return this.billPerMinute() + Math.round(this.jamUpkeepOwed);
+  },
+
+  // True when the cash on hand won't pay the next bill, so paying it would take the shop below $0.
+  shortForNextBill() {
+    return this.cash < this.nextBillTotal();
   },
 
   incomePerSecond() {
@@ -759,6 +810,22 @@ export const Game = {
     };
   },
 
+  // The next thing to aim for, shown under the money panel, or null once every goal is reached.
+  // It comes from the shop's own progress, so saves need nothing new. Records an old save
+  // couldn't date (MILESTONE_UNKNOWN) count as reached.
+  goalText() {
+    if (!this.beltsUnlocked) return `Sell ${BELTS_UNLOCK_ZINES} Zines to unlock belts (${this.zinesSold}/${BELTS_UNLOCK_ZINES})`;
+    const { production } = LICENSES;
+    if (!this.licenses.has("production")) {
+      return `Buy the ${production.name} license in the Shop (${money(this.cash)} of ${money(production.price)})`;
+    }
+    if (this.firstTruck === null) return "Fill a Truck Dock and send out your first truck";
+    const profit = money(this.totalProfit());
+    if (this.milestones.profit10k === null) return `Reach $10,000 profit (${profit} now)`;
+    if (this.milestones.profit100k === null) return `Reach $100,000 profit (${profit} now)`;
+    return null;
+  },
+
   // A Truck Dock calls this when a full truck drives off. The first one is the soft win;
   // the shop keeps running after it.
   truckLeft() {
@@ -803,7 +870,7 @@ export const Game = {
     this.updateRecords();
     if (!this.beltsUnlocked && this.zinesSold >= BELTS_UNLOCK_ZINES) this.unlockBelts();
     for (const f of this.floaters) f.age += dt;
-    this.floaters = this.floaters.filter((f) => f.age < (f.kind === "tip" ? 1.6 : 1));
+    this.floaters = this.floaters.filter((f) => f.age < f.life);
   },
 };
 
@@ -841,6 +908,13 @@ export const Camera = {
     this.x = ((Game.floor.cols + 1) * TILE - YARD) / 2;
     this.y = ((Game.floor.rows + 1) * TILE - YARD) / 2;
     this.fitted = true;
+  },
+
+  // Put world point (x, y) in the middle of the screen, as far as clamp allows.
+  lookAt(x, y) {
+    this.x = x;
+    this.y = y;
+    this.clamp();
   },
 
   pan(dx, dy) {

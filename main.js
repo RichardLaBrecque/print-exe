@@ -291,16 +291,21 @@ function drawBeltGhost() {
   ctx.strokeRect(x, y, TILE, TILE);
 }
 
-// Win95 tooltip with a bold title and wrapped text, below and right of (x, y) in screen space.
-function infoTip(ctx, title, text, x, y) {
+// Win95 tooltip with a bold title and wrapped text, below and right of (x, y) in screen space,
+// or centered above it with `above`, so a finger on (x, y) doesn't cover it.
+function infoTip(ctx, title, text, x, y, above = false) {
   const maxWidth = 240;
   ctx.font = Draw.font(12, false);
   const lines = Draw.wrap(ctx, text, maxWidth);
   ctx.font = Draw.font(12, true);
   const width = Math.max(ctx.measureText(title).width, ...lines.map((l) => ctx.measureText(l).width)) + 12;
   const height = 8 + 16 * (lines.length + 1);
-  const left = Math.round(Math.min(x + 14, Game.width - width - 4));
-  const top = Math.round(Math.min(y + 18, Game.height - height - 4));
+  const left = above
+    ? Math.round(Math.max(4, Math.min(x - width / 2, Game.width - width - 4)))
+    : Math.round(Math.min(x + 14, Game.width - width - 4));
+  const top = above
+    ? Math.round(Math.max(4, y - height - 40))
+    : Math.round(Math.min(y + 18, Game.height - height - 4));
 
   ctx.fillStyle = "#FFFFE1";
   ctx.fillRect(left, top, width, height);
@@ -355,15 +360,16 @@ function drawLabels() {
   ctx.textAlign = "left";
 }
 
+const TIP_FADE_SECONDS = 0.4; // a tip fades out over the end of its life
+
 function drawFloaters() {
   for (const f of Game.floaters) {
     const p = Camera.toScreen(f.x, f.y);
     if (f.kind === "tip") {
-      const alpha = f.age > 1.2 ? 1 - (f.age - 1.2) / 0.4 : 1;
-      tooltip(ctx, f.text, p.x, p.y, alpha);
+      tooltip(ctx, f.text, p.x, p.y, Math.min(1, (f.life - f.age) / TIP_FADE_SECONDS));
     } else {
       const rise = f.age * 30;
-      ctx.globalAlpha = 1 - f.age;
+      ctx.globalAlpha = 1 - f.age / f.life;
       ctx.font = Draw.font(18, true);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -418,8 +424,11 @@ function render() {
 //   belt:   tap to place or rotate, drag to lay a line
 //   erase:  tap or drag to remove belts
 // Two fingers pan and zoom with any tool. Right or middle mouse drag pans. Scroll zooms.
+// Pressing and holding one finger still shows what's under it (see showInfoAt).
 const pointers = new Map(); // pointerId -> { x, y } in screen px
-let drag = null; // { start: { x, y }, moved, pan, machine, grab: { x, y }, tile: { col, row } }
+// { start: { x, y }, moved, pan, machine, grab: { x, y }, tile: { col, row }, info }, where info
+// means a press and hold is showing its tooltip
+let drag = null;
 let pinch = null; // { dist, mid }
 
 function localPoint(e) {
@@ -449,6 +458,26 @@ function updateHover(p) {
   }
 }
 
+// Press and hold with a finger or pen: show the description tooltip a resting mouse gets, at once
+// and above the finger. The press then does nothing else (no tap, move or pan) until it lifts,
+// and the tooltip stays until the next press.
+const LONG_PRESS_MS = 500;
+let longPress = null; // timer for the press being held, until it fires or the press moves or ends
+
+function showInfoAt(p) {
+  longPress = null;
+  updateHover(p);
+  if (!Game.hover) return; // open floor: nothing to describe, so the press carries on as usual
+  Game.hover.since = 0;
+  Game.hover.above = true;
+  drag.info = true;
+}
+
+function cancelLongPress() {
+  clearTimeout(longPress);
+  longPress = null;
+}
+
 function drawHoverInfo() {
   const hover = Game.hover;
   if (!hover || performance.now() - hover.since < HOVER_DELAY_MS) return;
@@ -457,8 +486,11 @@ function drawHoverInfo() {
     ? ` Its OUT tray is full: clear it before upkeep goes up (now ${target.upkeepMultiplier()}x).`
     : "";
   const upkeep = target.upkeep ? ` Upkeep $${target.upkeep}/min.${jammed}` : "";
+  // Belts have no upgrades; a machine with none left, or none yet, has no price
+  const cost = target.upgradeCost?.(Game) ?? null;
+  const upgrade = cost === null ? "" : ` Upgrade (U) for ${money(cost)}: ${target.upgradeNote()}.`;
   const text = target.details ? target.details(Game) : target.description;
-  infoTip(ctx, target.title, `${text}${upkeep}`, hover.x, hover.y);
+  infoTip(ctx, target.title, `${text}${upkeep}${upgrade}`, hover.x, hover.y, hover.above);
 }
 
 // A cursor that shows the item in your hand: a small arrow with the item on a white card beside it.
@@ -515,8 +547,10 @@ function hoverCursor(p) {
 }
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-canvas.addEventListener("pointerleave", () => {
-  Game.hover = null;
+// Only a mouse leaving hides the tooltip. A finger "leaves" as it lifts, which would hide a
+// press-and-hold tooltip straight away.
+canvas.addEventListener("pointerleave", (e) => {
+  if (e.pointerType === "mouse") Game.hover = null;
 });
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -532,9 +566,11 @@ canvas.addEventListener("pointerdown", (e) => {
     const machine = Game.tool === "select" ? Game.machineAt(w.x, w.y) ?? null : null;
     const piece = Game.tool === "select" && !machine ? Game.beltAt(tile.col, tile.row) ?? null : null;
     const grab = machine ? { x: w.x - machine.col * TILE, y: w.y - machine.row * TILE } : null;
-    drag = { start: p, moved: false, pan: e.button !== 0, button: e.button, machine, piece, grab, tile };
+    drag = { start: p, moved: false, pan: e.button !== 0, button: e.button, machine, piece, grab, tile, info: false };
+    if (e.pointerType !== "mouse") longPress = setTimeout(() => showInfoAt(p), LONG_PRESS_MS);
   } else if (pointers.size === 2) {
-    // A second finger cancels the tap or the move and starts a pinch
+    // A second finger cancels the tap, the move or the press and hold, and starts a pinch
+    cancelLongPress();
     drag.moved = true;
     drag.pan = true;
     drag.machine = null;
@@ -586,10 +622,11 @@ canvas.addEventListener("pointermove", (e) => {
     pinch = now;
     return;
   }
-  if (pointers.size !== 1) return;
+  if (pointers.size !== 1 || drag.info) return;
 
   if (!drag.moved) {
     if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) <= TAP_SLOP) return;
+    cancelLongPress();
     startDrag();
   }
 
@@ -615,6 +652,7 @@ canvas.addEventListener("pointermove", (e) => {
 
 function endPointer(e) {
   if (!pointers.has(e.pointerId)) return;
+  cancelLongPress();
 
   if (Game.moving) {
     if (e.type === "pointercancel") Game.moving.valid = false;
@@ -623,9 +661,15 @@ function endPointer(e) {
     if (e.type === "pointercancel") Game.movingBelt.valid = false;
     Game.endMoveBelt();
   } else if (e.type === "pointerup" && drag && !drag.moved && drag.button === 2) {
-    // Right-click (without dragging) drops whatever tool you're holding and goes back to Select
-    if (Game.tool !== "select") Game.setTool("select");
-  } else if (e.type === "pointerup" && pointers.size === 1 && drag && !drag.moved && !drag.pan) {
+    // Right-click (without dragging) drops whatever tool you're holding and goes back to Select.
+    // With Select already on, it puts a held item back where it came from.
+    if (Game.tool !== "select") {
+      Game.setTool("select");
+    } else {
+      const w = Camera.toWorld(drag.start.x, drag.start.y);
+      Game.putBack(w.x, w.y);
+    }
+  } else if (e.type === "pointerup" && pointers.size === 1 && drag && !drag.moved && !drag.pan && !drag.info) {
     const w = Camera.toWorld(drag.start.x, drag.start.y);
     Game.handleTap(w.x, w.y);
   }
@@ -641,19 +685,74 @@ function endPointer(e) {
   }
 }
 
-// Keyboard shortcuts for the tools, plus F to view the whole floor. Keys pressed with Ctrl, Cmd
-// or Alt belong to the browser (Ctrl+F finds, Cmd+S saves), so they're left alone.
+// Arrow keys look around while held, at KEY_PAN_SPEED screen px a second. + and - zoom by
+// KEY_ZOOM_STEP around the middle of the screen.
+const KEY_PAN_SPEED = 600;
+const KEY_ZOOM_STEP = 1.25;
+/** @type {Record<string, { x: number, y: number }>} */
+const VIEW_DIR_BY_KEY = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
+const heldArrowKeys = new Set();
+
+// Move the view the way the held arrow keys point. Camera.pan drags the floor, the other way.
+function panFromKeys(dt) {
+  let x = 0;
+  let y = 0;
+  for (const key of heldArrowKeys) {
+    x += VIEW_DIR_BY_KEY[key].x;
+    y += VIEW_DIR_BY_KEY[key].y;
+  }
+  if (x !== 0 || y !== 0) Camera.pan(-x * KEY_PAN_SPEED * dt, -y * KEY_PAN_SPEED * dt);
+}
+
+// Keyboard shortcuts for the tools, plus Escape to close windows, F to view the whole floor, J to
+// see the next jammed machine, arrow keys to look around and + and - to zoom. Keys pressed with
+// Ctrl, Cmd or Alt belong to the browser (Ctrl+F finds, Cmd+S saves, Cmd+ zooms the page), so
+// they're left alone.
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (VIEW_DIR_BY_KEY[e.key]) {
+    heldArrowKeys.add(e.key);
+    e.preventDefault();
+    return;
+  }
+  if (e.key === "+" || e.key === "=") {
+    Camera.zoomAt(Game.width / 2, Game.height / 2, KEY_ZOOM_STEP);
+    return;
+  }
+  if (e.key === "-" || e.key === "_") {
+    Camera.zoomAt(Game.width / 2, Game.height / 2, 1 / KEY_ZOOM_STEP);
+    return;
+  }
+  if (e.key === "Escape") {
+    // Close a menu or window first. With none open, go back to Select; with Select already on,
+    // put a held item back where it came from.
+    if (UI.dismiss()) return;
+    if (Game.tool !== "select") Game.setTool("select");
+    else Game.putBack(Camera.x, Camera.y);
+    return;
+  }
   if (e.key.toLowerCase() === "f") {
     Camera.fit();
     return;
   }
+  if (e.key.toLowerCase() === "j") {
+    Game.showNextJam();
+    return;
+  }
   /** @type {Record<string, Tool>} */
-  const tools = { v: "select", escape: "select", b: "belt", x: "express", s: "splitter", r: "bridge", e: "erase", u: "upgrade" };
+  const tools = { v: "select", b: "belt", x: "express", s: "splitter", r: "bridge", e: "erase", u: "upgrade" };
   const tool = tools[e.key.toLowerCase()];
   if (tool && tool !== Game.tool) Game.setTool(tool);
 });
+
+// Stop looking around when an arrow key comes up, or when the window loses focus and won't hear it.
+window.addEventListener("keyup", (e) => heldArrowKeys.delete(e.key));
+window.addEventListener("blur", () => heldArrowKeys.clear());
 
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
@@ -671,6 +770,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   try {
+    panFromKeys(dt);
     Game.update(dt);
     render();
   } catch (error) {
@@ -694,6 +794,7 @@ UI.init({
   onTool: (tool) => Game.setTool(tool),
   onBuy: (entry) => Game.buy(entry),
   onFit: () => Camera.fit(),
+  onShowJam: () => Game.showNextJam(),
   onNewShop: (challengeKey) => Save.newShop(challengeKey),
   onSaveFile: () => Save.download(Game),
   onOpenFile: (file) => Save.open(file, Game),

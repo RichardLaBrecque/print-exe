@@ -31,6 +31,7 @@
       width: 100%;
       min-height: 0;
       touch-action: none;
+      -webkit-touch-callout: none; /* press and hold shows a machine's description, not iOS's menu */
     }
 
     /* Win95 bevels, done with stacked inset shadows (outer + inner edge). */
@@ -93,12 +94,20 @@
 
     [hidden] { display: none !important; }
 
-    /* Money counter over the shop floor, Minesweeper-style */
-    #money {
+    /* Readouts over the top-left of the shop floor, one under another */
+    #hud {
       position: absolute;
       top: 12px;
       left: 12px;
       z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    /* Money counter, Minesweeper-style */
+    #money {
       display: flex;
       flex-direction: column;
       align-items: stretch;
@@ -135,6 +144,29 @@
 
     @keyframes overdue {
       50% { background: #ff8080; }
+    }
+
+    /* Short: cash won't cover the next bill, so the bill line turns amber as a warning */
+    #money.short #money-bill { color: #000; background: #ffd23f; font-weight: bold; padding: 1px 3px; }
+
+    /* The next goal, in small print under the money */
+    #goal {
+      max-width: 220px;
+      padding: 3px 6px;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    /* Jam alert: how many machines are jammed. Tap it to look at each in turn. */
+    #jam-alert {
+      padding: 4px 8px;
+      border: 0;
+      background: #d93030;
+      color: #fff;
+      font: inherit;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
     }
 
     /* Description tooltip for Shop rows */
@@ -461,12 +493,16 @@
 <body>
   <canvas id="game"></canvas>
 
-  <button id="money" class="raised" type="button" title="Open the ledger">
-    <span id="money-value" class="sunken">$000000</span>
-    <span id="money-rate">Income $0.0/s</span>
-    <span id="money-costs">Costs $0.0/s</span>
-    <span id="money-bill">Rent $0 in 2:00</span>
-  </button>
+  <div id="hud">
+    <button id="money" class="raised" type="button" title="Open the ledger">
+      <span id="money-value" class="sunken">$000000</span>
+      <span id="money-rate">Income $0.0/s</span>
+      <span id="money-costs">Costs $0.0/s</span>
+      <span id="money-bill">Rent $0 in 2:00</span>
+    </button>
+    <div id="goal" class="raised" hidden></div>
+    <button id="jam-alert" class="raised" type="button" title="Show the next jammed machine" hidden></button>
+  </div>
 
   <div id="tooltip" role="tooltip" hidden><b id="tooltip-title"></b><span id="tooltip-text"></span></div>
 
@@ -524,19 +560,26 @@
         <p><b>Controls</b></p>
         <ul>
           <li>Tap a machine's IN or OUT tray, or its middle, to use it.</li>
+          <li>Rest the mouse on a machine or belt to read about it. On a phone, press and hold it.</li>
           <li>Drag machines and belts to move them. Drag open floor to look around.</li>
           <li>Pinch or scroll to zoom. Press F to see the whole floor.</li>
+          <li>Keys: arrow keys look around, + and - zoom, Esc closes a window or goes back to
+            Select. Each tool's key is beside it in the Start menu.</li>
           <li>Start menu: the Shop, the Ledger, the Scorecard, and your tools.</li>
-          <li>Right-click goes back to Select.</li>
+          <li>Right-click goes back to Select. With Select on, it puts what you're holding back
+            where you took it from. Esc does the same.</li>
+          <li>The Upgrade tool improves some machines: the Manual Stapler becomes an Auto Stapler.
+            A machine's description names its upgrade and price.</li>
           <li>Belts unlock once you've sold 10 Zines. Triangles then appear on trays to show where belts connect.</li>
           <li>Your shop saves itself in this browser. The Start menu can also save it to a file.</li>
         </ul>
         <p><b>Grow:</b> automate with belts, buy licenses for roll paper and production
           equipment, then run rolls through presses, sheeters and binders to pallets and trucks.
           Keep those lines moving: a production machine whose OUT tray stays full is jammed, and
-          its upkeep climbs every 30 seconds until you clear it.</p>
-        <p><b>Goal:</b> fill a Truck Dock and send out your first truck. The shop keeps running
-          after that. The Scorecard in the Start menu keeps your first-truck numbers beside your
+          its upkeep climbs every 30 seconds until you clear it. A red button under the money counts
+          jammed machines: tap it, or press J, to see each one.</p>
+        <p><b>Goal:</b> fill a Truck Dock and send out your first truck. The line under the money
+          shows what to aim for next on the way. The shop keeps running after that. The Scorecard in the Start menu keeps your first-truck numbers beside your
           current ones, plus records like your time to $10,000 profit, so you can share them and
           try to beat them.</p>
       </div>
@@ -648,19 +691,19 @@
   <script type="importmap">
     {
       "imports": {
-        "./grid.js": "./grid.js?v=2026-10-21.2",
-        "./format.js": "./format.js?v=2026-10-21.2",
-        "./draw.js": "./draw.js?v=2026-10-21.2",
-        "./items.js": "./items.js?v=2026-10-21.2",
-        "./belts.js": "./belts.js?v=2026-10-21.2",
-        "./machines.js": "./machines.js?v=2026-10-21.2",
-        "./production.js": "./production.js?v=2026-10-21.2",
-        "./catalog.js": "./catalog.js?v=2026-10-21.2",
-        "./challenges.js": "./challenges.js?v=2026-10-21.2",
-        "./game.js": "./game.js?v=2026-10-21.2",
-        "./save.js": "./save.js?v=2026-10-21.2",
-        "./ui.js": "./ui.js?v=2026-10-21.2",
-        "./main.js": "./main.js?v=2026-10-21.2"
+        "./grid.js": "./grid.js?v=2026-11-19.13",
+        "./format.js": "./format.js?v=2026-11-19.13",
+        "./draw.js": "./draw.js?v=2026-11-19.13",
+        "./items.js": "./items.js?v=2026-11-19.13",
+        "./belts.js": "./belts.js?v=2026-11-19.13",
+        "./machines.js": "./machines.js?v=2026-11-19.13",
+        "./production.js": "./production.js?v=2026-11-19.13",
+        "./catalog.js": "./catalog.js?v=2026-11-19.13",
+        "./challenges.js": "./challenges.js?v=2026-11-19.13",
+        "./game.js": "./game.js?v=2026-11-19.13",
+        "./save.js": "./save.js?v=2026-11-19.13",
+        "./ui.js": "./ui.js?v=2026-11-19.13",
+        "./main.js": "./main.js?v=2026-11-19.13"
       }
     }
   </script>

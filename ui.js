@@ -50,7 +50,7 @@ function setText(el, text) {
 }
 
 export const UI = {
-  init({ onTool, onBuy, onFit, onNewShop, onSaveFile, onOpenFile }) {
+  init({ onTool, onBuy, onFit, onShowJam, onNewShop, onSaveFile, onOpenFile }) {
     this.shopEl = document.getElementById("shop");
     this.helpEl = document.getElementById("help");
     this.buyButtons = this.buildShop(onBuy);
@@ -69,6 +69,9 @@ export const UI = {
     this.moneyCostsEl = document.getElementById("money-costs");
     this.moneyBillEl = document.getElementById("money-bill");
     this.shownCash = 0;
+    this.goalEl = document.getElementById("goal");
+    this.jamAlertEl = document.getElementById("jam-alert");
+    this.jamAlertEl.addEventListener("click", () => onShowJam());
 
     this.ledgerEl = document.getElementById("ledger");
     this.listEl = document.getElementById("ledger-list");
@@ -153,17 +156,9 @@ export const UI = {
   // How to Play window. Opens on load unless "Don't show this again" was ticked before.
   // Browser storage can be blocked (private windows, previews), so every access is guarded.
   initHelp() {
-    const hideBox = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
-    const close = () => {
-      this.helpEl.hidden = true;
-      try {
-        localStorage.setItem(HELP_HIDDEN_KEY, hideBox.checked ? "1" : "");
-      } catch {
-        // Can't remember the choice; the window just shows again next time
-      }
-    };
-    document.getElementById("help-ok").addEventListener("click", close);
-    document.getElementById("help-close").addEventListener("click", close);
+    this.helpHideEl = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
+    document.getElementById("help-ok").addEventListener("click", () => this.closeHelp());
+    document.getElementById("help-close").addEventListener("click", () => this.closeHelp());
 
     let hidden;
     try {
@@ -171,8 +166,18 @@ export const UI = {
     } catch {
       hidden = false;
     }
-    hideBox.checked = hidden;
+    this.helpHideEl.checked = hidden;
     if (!hidden) this.openWindow(this.helpEl);
+  },
+
+  // Close How to Play and remember whether "Don't show this again" is ticked.
+  closeHelp() {
+    this.helpEl.hidden = true;
+    try {
+      localStorage.setItem(HELP_HIDDEN_KEY, this.helpHideEl.checked ? "1" : "");
+    } catch {
+      // Can't remember the choice; the window just shows again next time
+    }
   },
 
   // Challenges window: a row per challenge. Starting one replaces the current shop, so it asks first.
@@ -200,7 +205,7 @@ export const UI = {
     }
   },
 
-  // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape.
+  // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape (see dismiss).
   initStartMenu(onTool, onFit) {
     this.startEl = document.getElementById("start");
     this.menuEl = document.getElementById("start-menu");
@@ -250,9 +255,6 @@ export const UI = {
       if (this.menuEl.contains(e.target) || this.startEl.contains(e.target)) return;
       this.setMenuOpen(false);
     });
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") this.setMenuOpen(false);
-    });
   },
 
   // Start menu: Save to File, Open Save File, New Shop.
@@ -300,6 +302,28 @@ export const UI = {
       "Can't open your shop",
       "Your saved shop couldn't be opened, so a new shop has started. The old save was kept as a backup in this browser.",
     );
+  },
+
+  // Escape: close the Start menu, else the message box, else How to Play, else whichever window
+  // is open. Returns true if something closed, so Escape does nothing else that press.
+  dismiss() {
+    if (!this.menuEl.hidden) {
+      this.setMenuOpen(false);
+      return true;
+    }
+    const dialog = document.getElementById("dialog");
+    if (!dialog.hidden) {
+      dialog.hidden = true;
+      return true;
+    }
+    if (!this.helpEl.hidden) {
+      this.closeHelp();
+      return true;
+    }
+    const open = [this.shopEl, this.ledgerEl, this.scorecardEl, this.challengesEl].find((el) => !el.hidden);
+    if (!open) return false;
+    this.toggleWindow(open);
+    return true;
   },
 
   setMenuOpen(open) {
@@ -452,6 +476,8 @@ export const UI = {
     setText(this.cashEl, `Cash: ${money(game.cash)}`);
     setText(this.holdingEl, `Holding: ${game.hand ?? "Nothing"}`);
     this.renderMoney(game);
+    this.renderGoal(game);
+    this.renderJamAlert(game);
     if (game.bankrupt) this.showBankrupt(game);
     if (!this.ledgerEl.hidden) this.renderLedger(game);
     if (!this.shopEl.hidden) this.renderShop(game);
@@ -499,8 +525,11 @@ export const UI = {
     setText(this.moneyRateEl, `Income ${perSecond(game.incomePerSecond())}`);
     setText(this.moneyCostsEl, `Costs ${perSecond((game.billPerMinute() + game.jamUpkeepPerMinute()) / 60)}`);
 
+    // Overdue flashes red with the bankruptcy countdown. Before that, the bill line turns amber
+    // while cash won't cover the next bill, so there's time to do something about it.
     const overdue = game.graceLeft !== null;
     this.moneyEl.classList.toggle("overdue", overdue);
+    this.moneyEl.classList.toggle("short", !overdue && game.shortForNextBill());
     setText(
       this.moneyBillEl,
       overdue
@@ -515,6 +544,20 @@ export const UI = {
       this.moneyValueEl.classList.add("bump");
     }
     this.shownCash = game.cash;
+  },
+
+  // The next goal, under the money. Hidden once every goal is reached.
+  renderGoal(game) {
+    const goal = game.goalText();
+    this.goalEl.hidden = goal === null;
+    if (goal !== null) setText(this.goalEl, `Goal: ${goal}`);
+  },
+
+  // How many machines are jammed, wherever they are on the floor. Hidden while none are.
+  renderJamAlert(game) {
+    const jams = game.jammedMachines().length;
+    this.jamAlertEl.hidden = jams === 0;
+    if (jams > 0) setText(this.jamAlertEl, `${jams} machine${jams === 1 ? "" : "s"} jammed: show (J)`);
   },
 
   renderLedger(game) {
