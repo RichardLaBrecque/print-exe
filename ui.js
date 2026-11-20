@@ -50,7 +50,7 @@ function setText(el, text) {
 }
 
 export const UI = {
-  init({ onTool, onBuy, onFit, onNewShop, onSaveFile, onOpenFile }) {
+  init({ onTool, onBuy, onFit, onShowJam, onNewShop, onSaveFile, onOpenFile }) {
     this.shopEl = document.getElementById("shop");
     this.helpEl = document.getElementById("help");
     this.buyButtons = this.buildShop(onBuy);
@@ -69,6 +69,8 @@ export const UI = {
     this.moneyCostsEl = document.getElementById("money-costs");
     this.moneyBillEl = document.getElementById("money-bill");
     this.shownCash = 0;
+    this.jamAlertEl = document.getElementById("jam-alert");
+    this.jamAlertEl.addEventListener("click", () => onShowJam());
 
     this.ledgerEl = document.getElementById("ledger");
     this.listEl = document.getElementById("ledger-list");
@@ -452,6 +454,7 @@ export const UI = {
     setText(this.cashEl, `Cash: ${money(game.cash)}`);
     setText(this.holdingEl, `Holding: ${game.hand ?? "Nothing"}`);
     this.renderMoney(game);
+    this.renderJamAlert(game);
     if (game.bankrupt) this.showBankrupt(game);
     if (!this.ledgerEl.hidden) this.renderLedger(game);
     if (!this.shopEl.hidden) this.renderShop(game);
@@ -518,6 +521,13 @@ export const UI = {
       this.moneyValueEl.classList.add("bump");
     }
     this.shownCash = game.cash;
+  },
+
+  // How many machines are jammed, wherever they are on the floor. Hidden while none are.
+  renderJamAlert(game) {
+    const jams = game.jammedMachines().length;
+    this.jamAlertEl.hidden = jams === 0;
+    if (jams > 0) setText(this.jamAlertEl, `${jams} machine${jams === 1 ? "" : "s"} jammed: show (J)`);
   },
 
   renderLedger(game) {

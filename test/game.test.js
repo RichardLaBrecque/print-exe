@@ -1,6 +1,7 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Game } from "../game.js";
+import { Camera, Game } from "../game.js";
+import { RollPress } from "../production.js";
 import { Save } from "../save.js";
 
 // The starting shop: 8 x 10 floor, Paper Supply, Desktop Printer, Manual Stapler, Outbox and
@@ -44,6 +45,39 @@ describe("Game#showTip", () => {
     assert.equal(tips().length, 0);
   });
 });
+
+describe("Game#showNextJam", () => {
+  it("centers the view on each jammed machine in turn, then starts over", () => {
+    const left = jammed(new RollPress({ col: 0, row: 6 })); // 4 x 3, centered at (128, 480)
+    const right = jammed(new RollPress({ col: 4, row: 6 })); // centered at (384, 480)
+    Game.machines.push(left, right);
+
+    Game.showNextJam();
+    assert.deepEqual({ x: Camera.x, y: Camera.y }, { x: 128, y: 480 });
+
+    Game.showNextJam();
+    assert.deepEqual({ x: Camera.x, y: Camera.y }, { x: 384, y: 480 });
+
+    Game.showNextJam();
+    assert.deepEqual({ x: Camera.x, y: Camera.y }, { x: 128, y: 480 });
+  });
+
+  it("leaves the view alone when nothing is jammed", () => {
+    Game.machines.push(new RollPress({ col: 0, row: 6 }));
+    Camera.x = 99;
+    Camera.y = 99;
+
+    Game.showNextJam();
+
+    assert.deepEqual({ x: Camera.x, y: Camera.y }, { x: 99, y: 99 });
+  });
+});
+
+// Jammed: its OUT tray has blocked it for 11 seconds, 1 past the grace period.
+function jammed(machine) {
+  machine.jamSeconds = 11;
+  return machine;
+}
 
 function tips() {
   return Game.floaters.filter((f) => f.kind === "tip");

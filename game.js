@@ -89,6 +89,7 @@ export const Game = {
   movingBelt: null,
   // What the mouse is resting on, for the description tooltip: { target, x, y, since }
   hover: null,
+  jamShown: null, // the jammed machine the jam alert showed last, so the next press moves on
   floaters: [], // { text, x, y, age, life, kind: "tip" | "float", color }, x/y in world space, age and life in seconds
   width: 0,
   height: 0,
@@ -545,6 +546,22 @@ export const Game = {
     this.showTip(machine.upgradedTip(), x + w / 2, y);
   },
 
+  jammedMachines() {
+    return this.machines.filter((m) => m.isJammed());
+  },
+
+  // The jam alert and J: center the view on the next jammed machine, taking each in turn, and
+  // shake it so it's easy to spot. Does nothing when no machine is jammed.
+  showNextJam() {
+    const jammed = this.jammedMachines();
+    if (jammed.length === 0) return;
+    const next = jammed[(jammed.indexOf(this.jamShown) + 1) % jammed.length];
+    this.jamShown = next;
+    const { x, y, w, h } = next.rect;
+    Camera.lookAt(x + w / 2, y + h / 2);
+    next.shake = 0.4;
+  },
+
   // Moving a belt piece is free: it keeps its direction and anything it's carrying.
   startMoveBelt(piece) {
     this.belts.delete(tileKey(piece.col, piece.row));
@@ -854,6 +871,13 @@ export const Camera = {
     this.x = ((Game.floor.cols + 1) * TILE - YARD) / 2;
     this.y = ((Game.floor.rows + 1) * TILE - YARD) / 2;
     this.fitted = true;
+  },
+
+  // Put world point (x, y) in the middle of the screen, as far as clamp allows.
+  lookAt(x, y) {
+    this.x = x;
+    this.y = y;
+    this.clamp();
   },
 
   pan(dx, dy) {

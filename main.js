@@ -645,12 +645,17 @@ function endPointer(e) {
   }
 }
 
-// Keyboard shortcuts for the tools, plus F to view the whole floor. Keys pressed with Ctrl, Cmd
-// or Alt belong to the browser (Ctrl+F finds, Cmd+S saves), so they're left alone.
+// Keyboard shortcuts for the tools, plus F to view the whole floor and J to see the next jammed
+// machine. Keys pressed with Ctrl, Cmd or Alt belong to the browser (Ctrl+F finds, Cmd+S saves),
+// so they're left alone.
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key.toLowerCase() === "f") {
     Camera.fit();
+    return;
+  }
+  if (e.key.toLowerCase() === "j") {
+    Game.showNextJam();
     return;
   }
   /** @type {Record<string, Tool>} */
@@ -698,6 +703,7 @@ UI.init({
   onTool: (tool) => Game.setTool(tool),
   onBuy: (entry) => Game.buy(entry),
   onFit: () => Camera.fit(),
+  onShowJam: () => Game.showNextJam(),
   onNewShop: (challengeKey) => Save.newShop(challengeKey),
   onSaveFile: () => Save.download(Game),
   onOpenFile: (file) => Save.open(file, Game),
