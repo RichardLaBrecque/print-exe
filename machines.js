@@ -5,7 +5,7 @@
 // A machine without an in or out tray just skips that column.
 
 import { DIRS, TILE } from "./grid.js";
-import { clock, money } from "./format.js";
+import { clock, money, orList } from "./format.js";
 import { Draw, INK, drawAnts } from "./draw.js";
 import { HAND, canCarry, drawItem } from "./items.js";
 import { BELT_SPEED } from "./belts.js";
@@ -258,18 +258,25 @@ export class Machine {
 
   /** @param {Part | null} part */
   hint(game, part) {
-    if (part?.startsWith("in:")) {
-      const tray = this.trayFor(part);
-      if (game.hand === HAND.EMPTY) return `Drop ${tray.item ?? "anything"} here.`;
-      if (tray.item !== null && tray.item !== game.hand) return `Only takes ${tray.item}.`;
-      return "In tray is full.";
-    }
+    if (part?.startsWith("in:")) return this.inTrayHint(game, this.trayFor(part));
     if (part === "out") {
       if (!canCarry(this.outTray.item)) return "Rolls are too heavy to carry. Move them with belts.";
       if (game.hand !== HAND.EMPTY) return "Your hands are full.";
       return "Nothing to collect yet.";
     }
     return this.bodyHint(game);
+  }
+
+  // What an IN tray takes, when a tap on it with what's in your hand did nothing. A tray that
+  // takes several kinds holds one at a time, so it can turn away a kind it otherwise takes.
+  /** @param {Tray} tray */
+  inTrayHint(game, tray) {
+    const kinds = tray.kinds ?? (tray.item === null ? [] : [tray.item]);
+    if (kinds.length > 0 && !kinds.some(canCarry)) return "Rolls are too heavy to carry. Feed this tray with a belt.";
+    if (game.hand === HAND.EMPTY) return `Drop ${kinds.length > 0 ? orList(kinds) : "anything"} here.`;
+    if (kinds.length > 0 && !kinds.includes(game.hand)) return `Only takes ${orList(kinds)}.`;
+    if (!tray.fits(game.hand)) return `Holds ${tray.item} now. It takes ${game.hand} once it's empty.`;
+    return "In tray is full.";
   }
 
   // Hover and Shop text: the description, plus the belt note once belts unlock, since ports

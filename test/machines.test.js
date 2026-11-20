@@ -58,6 +58,48 @@ describe("ManualStapler#use", () => {
   });
 });
 
+describe("Machine#hint", () => {
+  it("names every kind an empty multi-kind IN tray takes", () => {
+    const game = fakeGame();
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+
+    assert.equal(palletizer.hint(game, "in:0"), "Drop Zine or Perfect-Bound Zine here.");
+  });
+
+  it("says what an empty multi-kind IN tray takes when you hold something else", () => {
+    const game = fakeGame();
+    game.hand = HAND.BLANK_SHEET;
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+
+    assert.equal(palletizer.hint(game, "in:0"), "Only takes Zine or Perfect-Bound Zine.");
+  });
+
+  it("says a multi-kind IN tray takes your kind once the kind it holds is gone", () => {
+    const game = fakeGame();
+    game.hand = HAND.PERFECT_ZINE;
+    const palletizer = new Palletizer({ col: 0, row: 0 });
+    palletizer.inTray.put(HAND.ZINE);
+
+    assert.equal(palletizer.hint(game, "in:0"), "Holds Zine now. It takes Perfect-Bound Zine once it's empty.");
+  });
+
+  it("says rolls come by belt for an IN tray that only takes rolls", () => {
+    const game = fakeGame();
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+
+    assert.equal(sheeter.hint(game, "in:0"), "Rolls are too heavy to carry. Feed this tray with a belt.");
+  });
+
+  it("says a full IN tray is full", () => {
+    const game = fakeGame();
+    game.hand = HAND.BLANK_SHEET;
+    const printer = new DesktopPrinter({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) printer.inTray.put(HAND.BLANK_SHEET);
+
+    assert.equal(printer.hint(game, "in:0"), "In tray is full.");
+  });
+});
+
 describe("Outbox#update", () => {
   it("sells two Zines a second for $10 each", () => {
     const game = fakeGame();
