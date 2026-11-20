@@ -185,6 +185,7 @@ export const Save = {
     const state = {
       cash: data.cash,
       hand: data.hand,
+      handFrom: null, // where the held item came from isn't saved, so it can't be put back
       time: data.time,
       floor: { ...data.floor },
       challenge,

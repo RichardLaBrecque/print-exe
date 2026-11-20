@@ -249,8 +249,10 @@ export class Machine {
     if (part.startsWith("in:")) {
       this.trayFor(part).put(game.hand);
       game.hand = HAND.EMPTY;
+      game.handFrom = null;
     } else if (part === "out") {
       game.hand = this.outTray.take();
+      game.handFrom = this.outTray; // so Game#putBack can return it
     } else {
       this.activate(game);
     }

@@ -1,6 +1,9 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { Belt } from "../belts.js";
 import { Camera, Game, MILESTONE_UNKNOWN } from "../game.js";
+import { HAND } from "../items.js";
+import { DesktopPrinter } from "../machines.js";
 import { RollPress } from "../production.js";
 import { Save } from "../save.js";
 
@@ -123,6 +126,42 @@ describe("Game#goalText", () => {
     Game.milestones.profit100k = MILESTONE_UNKNOWN;
 
     assert.equal(Game.goalText(), null);
+  });
+});
+
+describe("Game#putBack", () => {
+  it("puts an item back in the OUT tray it was taken from", () => {
+    const printer = Game.machines.find((m) => m instanceof DesktopPrinter);
+    printer.outTray.put(HAND.SADDLE_SHEET);
+    printer.use(Game, "out");
+
+    Game.putBack(0, 0);
+
+    assert.equal(Game.hand, HAND.EMPTY);
+    assert.equal(printer.outTray.count, 1);
+  });
+
+  it("keeps the item in hand when its tray has filled up since", () => {
+    const printer = Game.machines.find((m) => m instanceof DesktopPrinter);
+    printer.outTray.put(HAND.SADDLE_SHEET);
+    printer.use(Game, "out");
+    for (let i = 0; i < 5; i++) printer.outTray.put(HAND.SADDLE_SHEET);
+
+    Game.putBack(0, 0);
+
+    assert.equal(Game.hand, HAND.SADDLE_SHEET);
+    assert.equal(printer.outTray.count, 5);
+  });
+
+  it("keeps an item picked up from a belt in hand", () => {
+    const belt = new Belt(5, 8, 0);
+    belt.item = HAND.ZINE;
+    Game.belts.set(belt.key, belt);
+    Game.tapBeltByHand(belt, 0, 0);
+
+    Game.putBack(0, 0);
+
+    assert.equal(Game.hand, HAND.ZINE);
   });
 });
 

@@ -18,7 +18,7 @@ It works best on a desktop browser. It also works on phones.
 - **Keys:** arrow keys look around, **+** and **-** zoom, **Esc** closes a window or goes back to Select. Each tool's key is beside it in the Start menu.
 - **Build** from the **Start** menu: belts, splitters, bridges, the Shop and the Ledger.
 - **Upgrade** some machines with the Upgrade tool: the Manual Stapler becomes an Auto Stapler. A machine's description names its upgrade and price.
-- **Right-click** goes back to Select.
+- **Right-click** goes back to Select. With Select on, it puts what you're holding back where you took it from. **Esc** does the same.
 - **Jams:** a red button under the money counts jammed machines. Tap it, or press **J**, to see each one.
 
 Rent and upkeep are billed every minute. If your cash stays below $0 for a minute, the shop goes bankrupt.

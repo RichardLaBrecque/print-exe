@@ -52,6 +52,10 @@ export const Game = {
   // entries: { at, time, label, amount }, amount is negative for spending
   ledger: { totalEarned: 0, totalSpent: 0, salesCount: 0, entryCount: 0, entries: [] },
   hand: HAND.EMPTY,
+  // The tray the held item was taken from, so putBack can return it; null when it came off a belt
+  // or from a save. Not saved.
+  /** @type {import("./machines.js").Tray | null} */
+  handFrom: null,
   time: 0,
   nextBillIn: FIRST_BILL_SECONDS, // seconds until rent and upkeep are billed
   jamUpkeepOwed: 0, // $ of extra upkeep from jammed machines, billed with the next rent
@@ -436,16 +440,32 @@ export const Game = {
       this.showTip("Rolls are too heavy to carry. Move them with belts.", wx, wy);
     } else if (this.hand === HAND.EMPTY && belt.item !== null) {
       this.hand = belt.item;
+      this.handFrom = null;
       belt.item = null;
     } else if (this.hand !== HAND.EMPTY && belt.item === null) {
       belt.item = this.hand;
       belt.progress = 0.5;
       this.hand = HAND.EMPTY;
+      this.handFrom = null;
     } else if (belt.item !== null) {
       this.showTip("Your hands are full.", wx, wy);
     } else {
       this.showTip("Empty belt. Use the Belt tool to rotate it.", wx, wy);
     }
+  },
+
+  // Right-click or Escape with Select: put the held item back in the tray it was taken from, if
+  // there's still room. An item picked up from a belt has no tray to go back to.
+  putBack(wx, wy) {
+    if (this.hand === HAND.EMPTY) return;
+    if (this.handFrom?.accepts(this.hand)) {
+      this.handFrom.put(this.hand);
+      this.hand = HAND.EMPTY;
+      this.handFrom = null;
+      return;
+    }
+    const places = this.beltsUnlocked ? "a tray, on a belt or in the Trash Can" : "a tray or the Trash Can";
+    this.showTip(`Can't put it back. Drop it in ${places}.`, wx, wy);
   },
 
   // Machines ---------------------------------------------------------------------

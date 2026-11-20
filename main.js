@@ -627,8 +627,14 @@ function endPointer(e) {
     if (e.type === "pointercancel") Game.movingBelt.valid = false;
     Game.endMoveBelt();
   } else if (e.type === "pointerup" && drag && !drag.moved && drag.button === 2) {
-    // Right-click (without dragging) drops whatever tool you're holding and goes back to Select
-    if (Game.tool !== "select") Game.setTool("select");
+    // Right-click (without dragging) drops whatever tool you're holding and goes back to Select.
+    // With Select already on, it puts a held item back where it came from.
+    if (Game.tool !== "select") {
+      Game.setTool("select");
+    } else {
+      const w = Camera.toWorld(drag.start.x, drag.start.y);
+      Game.putBack(w.x, w.y);
+    }
   } else if (e.type === "pointerup" && pointers.size === 1 && drag && !drag.moved && !drag.pan) {
     const w = Camera.toWorld(drag.start.x, drag.start.y);
     Game.handleTap(w.x, w.y);
@@ -689,8 +695,11 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape") {
-    // Close a menu or window first. Only with none open does Escape go back to Select.
-    if (!UI.dismiss() && Game.tool !== "select") Game.setTool("select");
+    // Close a menu or window first. With none open, go back to Select; with Select already on,
+    // put a held item back where it came from.
+    if (UI.dismiss()) return;
+    if (Game.tool !== "select") Game.setTool("select");
+    else Game.putBack(Camera.x, Camera.y);
     return;
   }
   if (e.key.toLowerCase() === "f") {
