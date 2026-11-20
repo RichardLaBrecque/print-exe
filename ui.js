@@ -499,8 +499,11 @@ export const UI = {
     setText(this.moneyRateEl, `Income ${perSecond(game.incomePerSecond())}`);
     setText(this.moneyCostsEl, `Costs ${perSecond((game.billPerMinute() + game.jamUpkeepPerMinute()) / 60)}`);
 
+    // Overdue flashes red with the bankruptcy countdown. Before that, the bill line turns amber
+    // while cash won't cover the next bill, so there's time to do something about it.
     const overdue = game.graceLeft !== null;
     this.moneyEl.classList.toggle("overdue", overdue);
+    this.moneyEl.classList.toggle("short", !overdue && game.shortForNextBill());
     setText(
       this.moneyBillEl,
       overdue

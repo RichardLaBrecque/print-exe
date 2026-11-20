@@ -66,3 +66,25 @@ describe("Game#incomePerSecond", () => {
     assert.equal(Game.sales.length, 0);
   });
 });
+
+describe("Game#shortForNextBill", () => {
+  // The next bill is $29: $20 rent and $9 upkeep.
+  it("is short with less cash than the next bill", () => {
+    Game.cash = 28;
+
+    assert.equal(Game.shortForNextBill(), true);
+  });
+
+  it("isn't short with enough cash for the next bill", () => {
+    Game.cash = 29;
+
+    assert.equal(Game.shortForNextBill(), false);
+  });
+
+  it("counts jam upkeep owed toward the next bill", () => {
+    Game.cash = 29;
+    Game.jamUpkeepOwed = 5;
+
+    assert.equal(Game.shortForNextBill(), true);
+  });
+});

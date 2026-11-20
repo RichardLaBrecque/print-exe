@@ -705,6 +705,11 @@ export const Game = {
     return this.billPerMinute() + Math.round(this.jamUpkeepOwed);
   },
 
+  // True when the cash on hand won't pay the next bill, so paying it would take the shop below $0.
+  shortForNextBill() {
+    return this.cash < this.nextBillTotal();
+  },
+
   incomePerSecond() {
     return this.earnedInLast(INCOME_SECONDS) / INCOME_SECONDS;
   },
