@@ -241,6 +241,23 @@ describe("Machine#upkeepMultiplier", () => {
   });
 });
 
+describe("Machine#jamLabel", () => {
+  // A Roll Press job is 5 seconds, so each upkeep step is the 30-second minimum.
+  it("names upkeep and the time to the next step for a newly jammed machine", () => {
+    const press = new RollPress({ col: 0, row: 0 });
+    press.jamSeconds = 10 + 18; // 18 seconds past the grace period
+
+    assert.equal(press.jamLabel(), "JAMMED: UPKEEP 2x IN 0:12");
+  });
+
+  it("names the upkeep now and the next step once upkeep has gone up", () => {
+    const press = new RollPress({ col: 0, row: 0 });
+    press.jamSeconds = 10 + 125; // 4 steps and 5 seconds past the grace period
+
+    assert.equal(press.jamLabel(), "JAMMED: UPKEEP 5x, 6x IN 0:25");
+  });
+});
+
 describe("TruckDock#update", () => {
   it("loads pallets of both kinds onto one truck", () => {
     const game = fakeGame();

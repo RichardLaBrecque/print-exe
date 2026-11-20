@@ -387,11 +387,13 @@ export class Machine {
     return step - (this.jammedFor() % step);
   }
 
-  // What the tag shows while jammed, e.g. "JAMMED: 2x IN 0:12" or "JAMMED: UPKEEP 5x, 6x IN 0:20".
+  // What the tag shows while jammed: upkeep now, if it's already up, then the next step and the
+  // time to it, e.g. "JAMMED: UPKEEP 2x IN 0:12" or "JAMMED: UPKEEP 5x, 6x IN 0:20". "UPKEEP"
+  // comes first so "IN" reads as time, not as the IN tray.
   jamLabel() {
     const multiplier = this.upkeepMultiplier();
-    const now = multiplier > 1 ? `UPKEEP ${multiplier}x, ` : "";
-    return `JAMMED: ${now}${multiplier + 1}x IN ${clock(this.nextJamStepIn())}`;
+    const now = multiplier > 1 ? `${multiplier}x, ` : "";
+    return `JAMMED: UPKEEP ${now}${multiplier + 1}x IN ${clock(this.nextJamStepIn())}`;
   }
 
   // Ports -------------------------------------------------------------------------------
