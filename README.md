@@ -13,6 +13,7 @@ It works best on a desktop browser. It also works on phones.
 - **Follow the goal** under the money: it shows what to aim for next.
 - **Start by hand.** Take a Blank Sheet from the Paper Supply, load the Printer, staple the print into a Zine, and drop it in the Outbox for $10.
 - **Tap** a machine's IN or OUT tray, or its middle, to use it.
+- **Read about** a machine or belt by resting the mouse on it. On a phone, press and hold it.
 - **Drag** machines and belts to move them. Drag open floor to look around.
 - **Zoom** with pinch or the scroll wheel. Press **F** to see the whole floor.
 - **Keys:** arrow keys look around, **+** and **-** zoom, **Esc** closes a window or goes back to Select. Each tool's key is beside it in the Start menu.

@@ -91,7 +91,8 @@ export const Game = {
   // Belt, splitter or bridge being dragged: { piece, from: { col, row }, valid }.
   // It's lifted out of `belts` while it moves, so it neither runs nor blocks its own old square.
   movingBelt: null,
-  // What the mouse is resting on, for the description tooltip: { target, x, y, since }
+  // What the mouse is resting on, or a finger is pressing and holding, for the description
+  // tooltip: { target, x, y, since, above }, with `above` to draw it above a finger
   hover: null,
   jamShown: null, // the jammed machine the jam alert showed last, so the next press moves on
   floaters: [], // { text, x, y, age, life, kind: "tip" | "float", color }, x/y in world space, age and life in seconds

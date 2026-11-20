@@ -291,16 +291,21 @@ function drawBeltGhost() {
   ctx.strokeRect(x, y, TILE, TILE);
 }
 
-// Win95 tooltip with a bold title and wrapped text, below and right of (x, y) in screen space.
-function infoTip(ctx, title, text, x, y) {
+// Win95 tooltip with a bold title and wrapped text, below and right of (x, y) in screen space,
+// or centered above it with `above`, so a finger on (x, y) doesn't cover it.
+function infoTip(ctx, title, text, x, y, above = false) {
   const maxWidth = 240;
   ctx.font = Draw.font(12, false);
   const lines = Draw.wrap(ctx, text, maxWidth);
   ctx.font = Draw.font(12, true);
   const width = Math.max(ctx.measureText(title).width, ...lines.map((l) => ctx.measureText(l).width)) + 12;
   const height = 8 + 16 * (lines.length + 1);
-  const left = Math.round(Math.min(x + 14, Game.width - width - 4));
-  const top = Math.round(Math.min(y + 18, Game.height - height - 4));
+  const left = above
+    ? Math.round(Math.max(4, Math.min(x - width / 2, Game.width - width - 4)))
+    : Math.round(Math.min(x + 14, Game.width - width - 4));
+  const top = above
+    ? Math.round(Math.max(4, y - height - 40))
+    : Math.round(Math.min(y + 18, Game.height - height - 4));
 
   ctx.fillStyle = "#FFFFE1";
   ctx.fillRect(left, top, width, height);
@@ -419,8 +424,11 @@ function render() {
 //   belt:   tap to place or rotate, drag to lay a line
 //   erase:  tap or drag to remove belts
 // Two fingers pan and zoom with any tool. Right or middle mouse drag pans. Scroll zooms.
+// Pressing and holding one finger still shows what's under it (see showInfoAt).
 const pointers = new Map(); // pointerId -> { x, y } in screen px
-let drag = null; // { start: { x, y }, moved, pan, machine, grab: { x, y }, tile: { col, row } }
+// { start: { x, y }, moved, pan, machine, grab: { x, y }, tile: { col, row }, info }, where info
+// means a press and hold is showing its tooltip
+let drag = null;
 let pinch = null; // { dist, mid }
 
 function localPoint(e) {
@@ -450,6 +458,26 @@ function updateHover(p) {
   }
 }
 
+// Press and hold with a finger or pen: show the description tooltip a resting mouse gets, at once
+// and above the finger. The press then does nothing else (no tap, move or pan) until it lifts,
+// and the tooltip stays until the next press.
+const LONG_PRESS_MS = 500;
+let longPress = null; // timer for the press being held, until it fires or the press moves or ends
+
+function showInfoAt(p) {
+  longPress = null;
+  updateHover(p);
+  if (!Game.hover) return; // open floor: nothing to describe, so the press carries on as usual
+  Game.hover.since = 0;
+  Game.hover.above = true;
+  drag.info = true;
+}
+
+function cancelLongPress() {
+  clearTimeout(longPress);
+  longPress = null;
+}
+
 function drawHoverInfo() {
   const hover = Game.hover;
   if (!hover || performance.now() - hover.since < HOVER_DELAY_MS) return;
@@ -462,7 +490,7 @@ function drawHoverInfo() {
   const cost = target.upgradeCost?.(Game) ?? null;
   const upgrade = cost === null ? "" : ` Upgrade (U) for ${money(cost)}: ${target.upgradeNote()}.`;
   const text = target.details ? target.details(Game) : target.description;
-  infoTip(ctx, target.title, `${text}${upkeep}${upgrade}`, hover.x, hover.y);
+  infoTip(ctx, target.title, `${text}${upkeep}${upgrade}`, hover.x, hover.y, hover.above);
 }
 
 // A cursor that shows the item in your hand: a small arrow with the item on a white card beside it.
@@ -519,8 +547,10 @@ function hoverCursor(p) {
 }
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-canvas.addEventListener("pointerleave", () => {
-  Game.hover = null;
+// Only a mouse leaving hides the tooltip. A finger "leaves" as it lifts, which would hide a
+// press-and-hold tooltip straight away.
+canvas.addEventListener("pointerleave", (e) => {
+  if (e.pointerType === "mouse") Game.hover = null;
 });
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -536,9 +566,11 @@ canvas.addEventListener("pointerdown", (e) => {
     const machine = Game.tool === "select" ? Game.machineAt(w.x, w.y) ?? null : null;
     const piece = Game.tool === "select" && !machine ? Game.beltAt(tile.col, tile.row) ?? null : null;
     const grab = machine ? { x: w.x - machine.col * TILE, y: w.y - machine.row * TILE } : null;
-    drag = { start: p, moved: false, pan: e.button !== 0, button: e.button, machine, piece, grab, tile };
+    drag = { start: p, moved: false, pan: e.button !== 0, button: e.button, machine, piece, grab, tile, info: false };
+    if (e.pointerType !== "mouse") longPress = setTimeout(() => showInfoAt(p), LONG_PRESS_MS);
   } else if (pointers.size === 2) {
-    // A second finger cancels the tap or the move and starts a pinch
+    // A second finger cancels the tap, the move or the press and hold, and starts a pinch
+    cancelLongPress();
     drag.moved = true;
     drag.pan = true;
     drag.machine = null;
@@ -590,10 +622,11 @@ canvas.addEventListener("pointermove", (e) => {
     pinch = now;
     return;
   }
-  if (pointers.size !== 1) return;
+  if (pointers.size !== 1 || drag.info) return;
 
   if (!drag.moved) {
     if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) <= TAP_SLOP) return;
+    cancelLongPress();
     startDrag();
   }
 
@@ -619,6 +652,7 @@ canvas.addEventListener("pointermove", (e) => {
 
 function endPointer(e) {
   if (!pointers.has(e.pointerId)) return;
+  cancelLongPress();
 
   if (Game.moving) {
     if (e.type === "pointercancel") Game.moving.valid = false;
@@ -635,7 +669,7 @@ function endPointer(e) {
       const w = Camera.toWorld(drag.start.x, drag.start.y);
       Game.putBack(w.x, w.y);
     }
-  } else if (e.type === "pointerup" && pointers.size === 1 && drag && !drag.moved && !drag.pan) {
+  } else if (e.type === "pointerup" && pointers.size === 1 && drag && !drag.moved && !drag.pan && !drag.info) {
     const w = Camera.toWorld(drag.start.x, drag.start.y);
     Game.handleTap(w.x, w.y);
   }

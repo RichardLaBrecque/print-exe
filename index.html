@@ -31,6 +31,7 @@
       width: 100%;
       min-height: 0;
       touch-action: none;
+      -webkit-touch-callout: none; /* press and hold shows a machine's description, not iOS's menu */
     }
 
     /* Win95 bevels, done with stacked inset shadows (outer + inner edge). */
@@ -559,6 +560,7 @@
         <p><b>Controls</b></p>
         <ul>
           <li>Tap a machine's IN or OUT tray, or its middle, to use it.</li>
+          <li>Rest the mouse on a machine or belt to read about it. On a phone, press and hold it.</li>
           <li>Drag machines and belts to move them. Drag open floor to look around.</li>
           <li>Pinch or scroll to zoom. Press F to see the whole floor.</li>
           <li>Keys: arrow keys look around, + and - zoom, Esc closes a window or goes back to
@@ -689,19 +691,19 @@
   <script type="importmap">
     {
       "imports": {
-        "./grid.js": "./grid.js?v=2026-11-19.12",
-        "./format.js": "./format.js?v=2026-11-19.12",
-        "./draw.js": "./draw.js?v=2026-11-19.12",
-        "./items.js": "./items.js?v=2026-11-19.12",
-        "./belts.js": "./belts.js?v=2026-11-19.12",
-        "./machines.js": "./machines.js?v=2026-11-19.12",
-        "./production.js": "./production.js?v=2026-11-19.12",
-        "./catalog.js": "./catalog.js?v=2026-11-19.12",
-        "./challenges.js": "./challenges.js?v=2026-11-19.12",
-        "./game.js": "./game.js?v=2026-11-19.12",
-        "./save.js": "./save.js?v=2026-11-19.12",
-        "./ui.js": "./ui.js?v=2026-11-19.12",
-        "./main.js": "./main.js?v=2026-11-19.12"
+        "./grid.js": "./grid.js?v=2026-11-19.13",
+        "./format.js": "./format.js?v=2026-11-19.13",
+        "./draw.js": "./draw.js?v=2026-11-19.13",
+        "./items.js": "./items.js?v=2026-11-19.13",
+        "./belts.js": "./belts.js?v=2026-11-19.13",
+        "./machines.js": "./machines.js?v=2026-11-19.13",
+        "./production.js": "./production.js?v=2026-11-19.13",
+        "./catalog.js": "./catalog.js?v=2026-11-19.13",
+        "./challenges.js": "./challenges.js?v=2026-11-19.13",
+        "./game.js": "./game.js?v=2026-11-19.13",
+        "./save.js": "./save.js?v=2026-11-19.13",
+        "./ui.js": "./ui.js?v=2026-11-19.13",
+        "./main.js": "./main.js?v=2026-11-19.13"
       }
     }
   </script>
