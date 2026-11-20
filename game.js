@@ -31,6 +31,13 @@ const BELT_TOOLS = ["belt", "express", "splitter", "bridge"];
 export const MILESTONE_UNKNOWN = -1;
 const ZINE_RATE_SECONDS = 60; // Zines/s is averaged over this window, like income
 
+// Tips stay up long enough to read, TIP_CHARS_PER_SECOND of text a second, from TIP_MIN_SECONDS
+// up to TIP_MAX_SECONDS. Floating numbers rise and fade over FLOAT_SECONDS.
+const TIP_CHARS_PER_SECOND = 12;
+const TIP_MIN_SECONDS = 1.6;
+const TIP_MAX_SECONDS = 6;
+const FLOAT_SECONDS = 1;
+
 const EXPAND_STEP = 2; // rows or columns added per expansion
 const TILE_PRICE = 3; // cost of each new floor square
 
@@ -82,7 +89,7 @@ export const Game = {
   movingBelt: null,
   // What the mouse is resting on, for the description tooltip: { target, x, y, since }
   hover: null,
-  floaters: [], // { text, x, y, age, kind: "tip" | "float", color }, x/y in world space
+  floaters: [], // { text, x, y, age, life, kind: "tip" | "float", color }, x/y in world space, age and life in seconds
   width: 0,
   height: 0,
   dpr: 1,
@@ -664,13 +671,14 @@ export const Game = {
   },
 
   floatText(text, x, y, color = "#3ddc84") {
-    this.floaters.push({ text, x, y, age: 0, kind: "float", color });
+    this.floaters.push({ text, x, y, age: 0, life: FLOAT_SECONDS, kind: "float", color });
   },
 
   showTip(text, x, y) {
     // Only one tooltip at a time
     this.floaters = this.floaters.filter((f) => f.kind !== "tip");
-    this.floaters.push({ text, x, y, age: 0, kind: "tip" });
+    const life = Math.min(TIP_MAX_SECONDS, Math.max(TIP_MIN_SECONDS, text.length / TIP_CHARS_PER_SECOND));
+    this.floaters.push({ text, x, y, age: 0, life, kind: "tip" });
   },
 
   // Running costs ------------------------------------------------------------------
@@ -803,7 +811,7 @@ export const Game = {
     this.updateRecords();
     if (!this.beltsUnlocked && this.zinesSold >= BELTS_UNLOCK_ZINES) this.unlockBelts();
     for (const f of this.floaters) f.age += dt;
-    this.floaters = this.floaters.filter((f) => f.age < (f.kind === "tip" ? 1.6 : 1));
+    this.floaters = this.floaters.filter((f) => f.age < f.life);
   },
 };
 

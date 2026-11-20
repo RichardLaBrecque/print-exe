@@ -355,15 +355,16 @@ function drawLabels() {
   ctx.textAlign = "left";
 }
 
+const TIP_FADE_SECONDS = 0.4; // a tip fades out over the end of its life
+
 function drawFloaters() {
   for (const f of Game.floaters) {
     const p = Camera.toScreen(f.x, f.y);
     if (f.kind === "tip") {
-      const alpha = f.age > 1.2 ? 1 - (f.age - 1.2) / 0.4 : 1;
-      tooltip(ctx, f.text, p.x, p.y, alpha);
+      tooltip(ctx, f.text, p.x, p.y, Math.min(1, (f.life - f.age) / TIP_FADE_SECONDS));
     } else {
       const rise = f.age * 30;
-      ctx.globalAlpha = 1 - f.age;
+      ctx.globalAlpha = 1 - f.age / f.life;
       ctx.font = Draw.font(18, true);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
