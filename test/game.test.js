@@ -1,6 +1,6 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, Game } from "../game.js";
+import { Camera, Game, MILESTONE_UNKNOWN } from "../game.js";
 import { RollPress } from "../production.js";
 import { Save } from "../save.js";
 
@@ -70,6 +70,59 @@ describe("Game#showNextJam", () => {
     Game.showNextJam();
 
     assert.deepEqual({ x: Camera.x, y: Camera.y }, { x: 99, y: 99 });
+  });
+});
+
+describe("Game#goalText", () => {
+  it("starts with selling Zines to unlock belts", () => {
+    Game.zinesSold = 3;
+
+    assert.equal(Game.goalText(), "Sell 10 Zines to unlock belts (3/10)");
+  });
+
+  it("moves on to the Production Equipment license once belts unlock", () => {
+    Game.beltsUnlocked = true;
+    Game.cash = 1234;
+
+    assert.equal(Game.goalText(), "Buy the Production Equipment license in the Shop ($1,234 of $3,000)");
+  });
+
+  it("moves on to the first truck once the license is bought", () => {
+    Game.beltsUnlocked = true;
+    Game.licenses.add("production");
+
+    assert.equal(Game.goalText(), "Fill a Truck Dock and send out your first truck");
+  });
+
+  it("moves on to $10,000 profit once the first truck has left", () => {
+    Game.beltsUnlocked = true;
+    Game.licenses.add("production");
+    Game.firstTruck = Game.scorecard();
+    Game.ledger.totalEarned = 5000;
+    Game.ledger.totalSpent = 1000;
+
+    assert.equal(Game.goalText(), "Reach $10,000 profit ($4,000 now)");
+  });
+
+  it("moves on to $100,000 profit once $10,000 is reached", () => {
+    Game.beltsUnlocked = true;
+    Game.licenses.add("production");
+    Game.firstTruck = Game.scorecard();
+    Game.milestones.profit10k = 600;
+    Game.ledger.totalEarned = 20000;
+    Game.ledger.totalSpent = 0;
+
+    assert.equal(Game.goalText(), "Reach $100,000 profit ($20,000 now)");
+  });
+
+  it("has no goal left once every record is reached, counting ones an old save couldn't date", () => {
+    Game.beltsUnlocked = true;
+    Game.licenses.add("production");
+    Game.firstTruck = Game.scorecard();
+    Game.milestones.profit10k = MILESTONE_UNKNOWN;
+    Game.milestones.profit100k = MILESTONE_UNKNOWN;
+
+    assert.equal(Game.goalText(), null);
   });
 });
 

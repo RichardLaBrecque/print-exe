@@ -789,6 +789,22 @@ export const Game = {
     };
   },
 
+  // The next thing to aim for, shown under the money panel, or null once every goal is reached.
+  // It comes from the shop's own progress, so saves need nothing new. Records an old save
+  // couldn't date (MILESTONE_UNKNOWN) count as reached.
+  goalText() {
+    if (!this.beltsUnlocked) return `Sell ${BELTS_UNLOCK_ZINES} Zines to unlock belts (${this.zinesSold}/${BELTS_UNLOCK_ZINES})`;
+    const { production } = LICENSES;
+    if (!this.licenses.has("production")) {
+      return `Buy the ${production.name} license in the Shop (${money(this.cash)} of ${money(production.price)})`;
+    }
+    if (this.firstTruck === null) return "Fill a Truck Dock and send out your first truck";
+    const profit = money(this.totalProfit());
+    if (this.milestones.profit10k === null) return `Reach $10,000 profit (${profit} now)`;
+    if (this.milestones.profit100k === null) return `Reach $100,000 profit (${profit} now)`;
+    return null;
+  },
+
   // A Truck Dock calls this when a full truck drives off. The first one is the soft win;
   // the shop keeps running after it.
   truckLeft() {

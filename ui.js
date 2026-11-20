@@ -69,6 +69,7 @@ export const UI = {
     this.moneyCostsEl = document.getElementById("money-costs");
     this.moneyBillEl = document.getElementById("money-bill");
     this.shownCash = 0;
+    this.goalEl = document.getElementById("goal");
     this.jamAlertEl = document.getElementById("jam-alert");
     this.jamAlertEl.addEventListener("click", () => onShowJam());
 
@@ -454,6 +455,7 @@ export const UI = {
     setText(this.cashEl, `Cash: ${money(game.cash)}`);
     setText(this.holdingEl, `Holding: ${game.hand ?? "Nothing"}`);
     this.renderMoney(game);
+    this.renderGoal(game);
     this.renderJamAlert(game);
     if (game.bankrupt) this.showBankrupt(game);
     if (!this.ledgerEl.hidden) this.renderLedger(game);
@@ -521,6 +523,13 @@ export const UI = {
       this.moneyValueEl.classList.add("bump");
     }
     this.shownCash = game.cash;
+  },
+
+  // The next goal, under the money. Hidden once every goal is reached.
+  renderGoal(game) {
+    const goal = game.goalText();
+    this.goalEl.hidden = goal === null;
+    if (goal !== null) setText(this.goalEl, `Goal: ${goal}`);
   },
 
   // How many machines are jammed, wherever they are on the floor. Hidden while none are.

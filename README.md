@@ -10,6 +10,7 @@ It works best on a desktop browser. It also works on phones.
 
 ## How to play
 
+- **Follow the goal** under the money: it shows what to aim for next.
 - **Start by hand.** Take a Blank Sheet from the Paper Supply, load the Printer, staple the print into a Zine, and drop it in the Outbox for $10.
 - **Tap** a machine's IN or OUT tray, or its middle, to use it.
 - **Drag** machines and belts to move them. Drag open floor to look around.
