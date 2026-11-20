@@ -15,6 +15,7 @@ It works best on a desktop browser. It also works on phones.
 - **Tap** a machine's IN or OUT tray, or its middle, to use it.
 - **Drag** machines and belts to move them. Drag open floor to look around.
 - **Zoom** with pinch or the scroll wheel. Press **F** to see the whole floor.
+- **Keys:** arrow keys look around, **+** and **-** zoom, **Esc** closes a window or goes back to Select. Each tool's key is beside it in the Start menu.
 - **Build** from the **Start** menu: belts, splitters, bridges, the Shop and the Ledger.
 - **Upgrade** some machines with the Upgrade tool: the Manual Stapler becomes an Auto Stapler. A machine's description names its upgrade and price.
 - **Right-click** goes back to Select.

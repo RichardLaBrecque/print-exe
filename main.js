@@ -645,11 +645,49 @@ function endPointer(e) {
   }
 }
 
-// Keyboard shortcuts for the tools, plus Escape to close windows, F to view the whole floor and J
-// to see the next jammed machine. Keys pressed with Ctrl, Cmd or Alt belong to the browser
-// (Ctrl+F finds, Cmd+S saves), so they're left alone.
+// Arrow keys look around while held, at KEY_PAN_SPEED screen px a second. + and - zoom by
+// KEY_ZOOM_STEP around the middle of the screen.
+const KEY_PAN_SPEED = 600;
+const KEY_ZOOM_STEP = 1.25;
+/** @type {Record<string, { x: number, y: number }>} */
+const VIEW_DIR_BY_KEY = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
+const heldArrowKeys = new Set();
+
+// Move the view the way the held arrow keys point. Camera.pan drags the floor, the other way.
+function panFromKeys(dt) {
+  let x = 0;
+  let y = 0;
+  for (const key of heldArrowKeys) {
+    x += VIEW_DIR_BY_KEY[key].x;
+    y += VIEW_DIR_BY_KEY[key].y;
+  }
+  if (x !== 0 || y !== 0) Camera.pan(-x * KEY_PAN_SPEED * dt, -y * KEY_PAN_SPEED * dt);
+}
+
+// Keyboard shortcuts for the tools, plus Escape to close windows, F to view the whole floor, J to
+// see the next jammed machine, arrow keys to look around and + and - to zoom. Keys pressed with
+// Ctrl, Cmd or Alt belong to the browser (Ctrl+F finds, Cmd+S saves, Cmd+ zooms the page), so
+// they're left alone.
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (VIEW_DIR_BY_KEY[e.key]) {
+    heldArrowKeys.add(e.key);
+    e.preventDefault();
+    return;
+  }
+  if (e.key === "+" || e.key === "=") {
+    Camera.zoomAt(Game.width / 2, Game.height / 2, KEY_ZOOM_STEP);
+    return;
+  }
+  if (e.key === "-" || e.key === "_") {
+    Camera.zoomAt(Game.width / 2, Game.height / 2, 1 / KEY_ZOOM_STEP);
+    return;
+  }
   if (e.key === "Escape") {
     // Close a menu or window first. Only with none open does Escape go back to Select.
     if (!UI.dismiss() && Game.tool !== "select") Game.setTool("select");
@@ -669,6 +707,10 @@ window.addEventListener("keydown", (e) => {
   if (tool && tool !== Game.tool) Game.setTool(tool);
 });
 
+// Stop looking around when an arrow key comes up, or when the window loses focus and won't hear it.
+window.addEventListener("keyup", (e) => heldArrowKeys.delete(e.key));
+window.addEventListener("blur", () => heldArrowKeys.clear());
+
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 
@@ -685,6 +727,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   try {
+    panFromKeys(dt);
     Game.update(dt);
     render();
   } catch (error) {
