@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DesktopPrinter, ManualStapler, Outbox } from "../machines.js";
+import { DesktopPrinter, ManualStapler, Outbox, PaperSupply } from "../machines.js";
 import { Palletizer, RollPress, Sheeter, TruckDock } from "../production.js";
 import { HAND } from "../items.js";
 
@@ -97,6 +97,36 @@ describe("Machine#hint", () => {
     for (let i = 0; i < 5; i++) printer.inTray.put(HAND.BLANK_SHEET);
 
     assert.equal(printer.hint(game, "in:0"), "In tray is full.");
+  });
+});
+
+describe("Machine#isBlockedBy", () => {
+  it("counts a full OUT tray as blocking a Stapler", () => {
+    const stapler = new ManualStapler({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) stapler.outTray.put(HAND.ZINE);
+
+    assert.equal(stapler.isBlockedBy(stapler.outTray), true);
+  });
+
+  it("never counts a full IN tray as blocking", () => {
+    const stapler = new ManualStapler({ col: 0, row: 0 });
+    for (let i = 0; i < 5; i++) stapler.inTray.put(HAND.SADDLE_SHEET);
+
+    assert.equal(stapler.isBlockedBy(stapler.inTray), false);
+  });
+
+  it("never counts a full Paper Supply as blocking, though its stock is its OUT tray too", () => {
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 40;
+
+    assert.equal(supply.isBlockedBy(supply.outTray), false);
+  });
+
+  it("counts a Sheeter's OUT tray as blocking once the next 10 sheets won't fit", () => {
+    const sheeter = new Sheeter({ col: 0, row: 0 });
+    for (let i = 0; i < 11; i++) sheeter.outTray.put(HAND.BLANK_SHEET);
+
+    assert.equal(sheeter.isBlockedBy(sheeter.outTray), true);
   });
 });
 

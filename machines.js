@@ -348,6 +348,13 @@ export class Machine {
     return this.outTray.isFull();
   }
 
+  // Whether this tray is what's stopping the machine: its OUT tray, while the next job won't fit.
+  // A supply's stock is both its IN and OUT tray, and a full stock is good, so it never counts.
+  /** @param {Tray} tray */
+  isBlockedBy(tray) {
+    return tray === this.outTray && tray !== this.inTray && this.isBlocked();
+  }
+
   // How long one job takes, for counting jam cycles. A `jams` machine without `seconds` overrides it.
   cycleSeconds() {
     return this.seconds;
@@ -667,11 +674,12 @@ export class Machine {
       ctx.globalAlpha = 1;
     }
 
-    // Count, red when full so you know the machine is blocked
+    // Count, red while this tray is stopping the machine, so you know it's blocked. A full IN
+    // tray or supply is doing fine, so it stays dark.
     if (!tray.endless) {
       ctx.font = Draw.font(10, true);
       ctx.textBaseline = "bottom";
-      ctx.fillStyle = tray.isFull() ? "#d93030" : INK;
+      ctx.fillStyle = this.isBlockedBy(tray) ? "#d93030" : INK;
       ctx.fillText(`${tray.count}/${tray.capacity}`, cx, sy + sh - 2);
     } else if (label === "OUT") {
       ctx.font = Draw.font(12, true);
