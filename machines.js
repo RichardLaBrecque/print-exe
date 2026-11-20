@@ -596,7 +596,7 @@ export class Machine {
     if (this.outTray) this.drawTray(ctx, this.partRect("out"), this.outTray, "OUT");
 
     const body = this.partRect("body");
-    if (body) this.drawBody(ctx, body);
+    if (body) this.drawBody(ctx, body, game);
 
     ctx.restore();
 
@@ -700,7 +700,7 @@ export class Machine {
     ctx.textAlign = "left";
   }
 
-  drawBody(ctx, r) {
+  drawBody(ctx, r, _game) {
     // A one-tile-tall body only has room for its label and progress bar
     if (r.h >= TILE * 2) {
       const s = Math.min(r.w, r.h) * 0.5;
@@ -828,11 +828,18 @@ export class Supply extends Machine {
     if (this.autoReorder && this.hasRoomForDelivery() && game.cash >= this.delivery.price) this.activate(game);
   }
 
-  drawBody(ctx, r) {
-    super.drawBody(ctx, r);
-    // Order button label, so it's clear the body is tappable
-    const label = this.pending > 0 ? "ARRIVING" : this.autoReorder ? "AUTO" : `ORDER ${money(this.delivery.price)}`;
-    this.drawBodyLabel(ctx, r, label, INK);
+  // The label across the body, so it's clear what a tap on it does. When you're broke and out
+  // of stock, a tap gets free samples, and the label says so rather than showing a price.
+  orderLabel(game) {
+    if (this.pending > 0) return "ARRIVING";
+    if (this.sampleDue(game)) return "FREE SAMPLES";
+    if (this.autoReorder) return "AUTO";
+    return `ORDER ${money(this.delivery.price)}`;
+  }
+
+  drawBody(ctx, r, game) {
+    super.drawBody(ctx, r, game);
+    this.drawBodyLabel(ctx, r, this.orderLabel(game), INK);
   }
 
   // A stack of whatever this supply holds.

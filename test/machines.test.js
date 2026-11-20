@@ -130,6 +130,45 @@ describe("Machine#isBlockedBy", () => {
   });
 });
 
+describe("Supply#orderLabel", () => {
+  it("offers free samples when you're broke and out of paper", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+
+    assert.equal(supply.orderLabel(game), "FREE SAMPLES");
+  });
+
+  it("shows the delivery price when you can afford one", () => {
+    const game = fakeGame();
+    game.cash = 40;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+
+    assert.equal(supply.orderLabel(game), "ORDER $40");
+  });
+
+  it("shows the delivery price while there's paper left, even when broke", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 5;
+
+    assert.equal(supply.orderLabel(game), "ORDER $40");
+  });
+
+  it("says a delivery is arriving once one is on the way", () => {
+    const game = fakeGame();
+    game.cash = 0;
+    const supply = new PaperSupply({ col: 0, row: 0 });
+    supply.inTray.count = 0;
+    supply.order(5);
+
+    assert.equal(supply.orderLabel(game), "ARRIVING");
+  });
+});
+
 describe("Outbox#update", () => {
   it("sells two Zines a second for $10 each", () => {
     const game = fakeGame();
