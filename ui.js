@@ -156,17 +156,9 @@ export const UI = {
   // How to Play window. Opens on load unless "Don't show this again" was ticked before.
   // Browser storage can be blocked (private windows, previews), so every access is guarded.
   initHelp() {
-    const hideBox = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
-    const close = () => {
-      this.helpEl.hidden = true;
-      try {
-        localStorage.setItem(HELP_HIDDEN_KEY, hideBox.checked ? "1" : "");
-      } catch {
-        // Can't remember the choice; the window just shows again next time
-      }
-    };
-    document.getElementById("help-ok").addEventListener("click", close);
-    document.getElementById("help-close").addEventListener("click", close);
+    this.helpHideEl = /** @type {HTMLInputElement} */ (document.getElementById("help-hide"));
+    document.getElementById("help-ok").addEventListener("click", () => this.closeHelp());
+    document.getElementById("help-close").addEventListener("click", () => this.closeHelp());
 
     let hidden;
     try {
@@ -174,8 +166,18 @@ export const UI = {
     } catch {
       hidden = false;
     }
-    hideBox.checked = hidden;
+    this.helpHideEl.checked = hidden;
     if (!hidden) this.openWindow(this.helpEl);
+  },
+
+  // Close How to Play and remember whether "Don't show this again" is ticked.
+  closeHelp() {
+    this.helpEl.hidden = true;
+    try {
+      localStorage.setItem(HELP_HIDDEN_KEY, this.helpHideEl.checked ? "1" : "");
+    } catch {
+      // Can't remember the choice; the window just shows again next time
+    }
   },
 
   // Challenges window: a row per challenge. Starting one replaces the current shop, so it asks first.
@@ -203,7 +205,7 @@ export const UI = {
     }
   },
 
-  // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape.
+  // Start menu: tools, then Shop and Ledger. Closes on pick, outside tap, or Escape (see dismiss).
   initStartMenu(onTool, onFit) {
     this.startEl = document.getElementById("start");
     this.menuEl = document.getElementById("start-menu");
@@ -253,9 +255,6 @@ export const UI = {
       if (this.menuEl.contains(e.target) || this.startEl.contains(e.target)) return;
       this.setMenuOpen(false);
     });
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") this.setMenuOpen(false);
-    });
   },
 
   // Start menu: Save to File, Open Save File, New Shop.
@@ -303,6 +302,28 @@ export const UI = {
       "Can't open your shop",
       "Your saved shop couldn't be opened, so a new shop has started. The old save was kept as a backup in this browser.",
     );
+  },
+
+  // Escape: close the Start menu, else the message box, else How to Play, else whichever window
+  // is open. Returns true if something closed, so Escape does nothing else that press.
+  dismiss() {
+    if (!this.menuEl.hidden) {
+      this.setMenuOpen(false);
+      return true;
+    }
+    const dialog = document.getElementById("dialog");
+    if (!dialog.hidden) {
+      dialog.hidden = true;
+      return true;
+    }
+    if (!this.helpEl.hidden) {
+      this.closeHelp();
+      return true;
+    }
+    const open = [this.shopEl, this.ledgerEl, this.scorecardEl, this.challengesEl].find((el) => !el.hidden);
+    if (!open) return false;
+    this.toggleWindow(open);
+    return true;
   },
 
   setMenuOpen(open) {

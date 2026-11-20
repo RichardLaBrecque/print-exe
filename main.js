@@ -645,11 +645,16 @@ function endPointer(e) {
   }
 }
 
-// Keyboard shortcuts for the tools, plus F to view the whole floor and J to see the next jammed
-// machine. Keys pressed with Ctrl, Cmd or Alt belong to the browser (Ctrl+F finds, Cmd+S saves),
-// so they're left alone.
+// Keyboard shortcuts for the tools, plus Escape to close windows, F to view the whole floor and J
+// to see the next jammed machine. Keys pressed with Ctrl, Cmd or Alt belong to the browser
+// (Ctrl+F finds, Cmd+S saves), so they're left alone.
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "Escape") {
+    // Close a menu or window first. Only with none open does Escape go back to Select.
+    if (!UI.dismiss() && Game.tool !== "select") Game.setTool("select");
+    return;
+  }
   if (e.key.toLowerCase() === "f") {
     Camera.fit();
     return;
@@ -659,7 +664,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   /** @type {Record<string, Tool>} */
-  const tools = { v: "select", escape: "select", b: "belt", x: "express", s: "splitter", r: "bridge", e: "erase", u: "upgrade" };
+  const tools = { v: "select", b: "belt", x: "express", s: "splitter", r: "bridge", e: "erase", u: "upgrade" };
   const tool = tools[e.key.toLowerCase()];
   if (tool && tool !== Game.tool) Game.setTool(tool);
 });
